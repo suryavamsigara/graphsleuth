@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 class Node:
     node_type: str
     aliases: list[str]
-    source_doc: str
+    source_chunk_id: str
     # content: str
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
 
@@ -20,7 +20,7 @@ class Edge:
     source_id: str
     target_id: str
     relation: str
-    source_doc: str
+    source_chunk_id: str
 
 class KnowledgeGraph:
     def __init__(self):
@@ -44,11 +44,10 @@ class KnowledgeGraph:
         for node_id, node in self.nodes.items():
             print(f"[{node_id[:8]}...] {node.name} ({node.node_type})")
             print(f"  Source: {node.source_doc}")
-            print(f"  Content: {node.content[:80]}")
             print()
         
         print("\n" + "=" * 50)
         print(f"Total nodes: {len(self.nodes)}")
         print(f"Total edges: {sum(len(v) for v in self.edges.values())}")
         print("=" * 50)
-        
+
