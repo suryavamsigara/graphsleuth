@@ -4,11 +4,16 @@ from dataclasses import dataclass, field
 
 @dataclass(frozen=True)
 class Node:
-    name: str
     node_type: str
+    aliases: list[str]
     source_doc: str
-    content: str
+    # content: str
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
+
+    @property
+    def name(self):
+        return self.aliases[0] if self.aliases else "UNKNOWN"
+
 
 @dataclass(frozen=True)
 class Edge:
