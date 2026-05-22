@@ -52,30 +52,3 @@ class KnowledgeGraph:
         print(f"Total edges: {sum(len(v) for v in self.edges.values())}")
         print("=" * 50)
         
-graph = KnowledgeGraph()
-node1 = Node(
-    name="Node 1",
-    node_type="Test",
-    source_doc="test doc",
-    content="This is first node i created"
-)
-
-node2 = Node(
-    name="Node 2",
-    node_type="Test 2",
-    source_doc="test doc",
-    content="This is seocond node"
-)
-
-edge1 = Edge(
-    source_id=node1.id,
-    target_id=node2.id,
-    relation="just test",
-    source_doc="test doc"
-)
-
-graph.add_node(node1)
-graph.add_node(node2)
-graph.create_edge(edge1)
-
-graph.print_graph()

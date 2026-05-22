@@ -1,5 +1,8 @@
+import json
 from pathlib import Path
 from collections import defaultdict
+
+from client import get_client
 from graph import Node, Edge, KnowledgeGraph
 
 root = Path(__file__).parent
@@ -19,7 +22,6 @@ def chunk_content(words: list[str]) -> list[list[str]]:
     
     return chunks
 
-SYSTEM_PROMPT = ""
 
 def extract(chunks: list[str], source_doc: str, client):
     """
@@ -38,18 +40,51 @@ def extract(chunks: list[str], source_doc: str, client):
         - (Transformer, uses, Attention mechanism)
     """
 
+    aggregated = {
+        "entities": [],
+        "triples": []
+    }
 
-    result: dict[str, list[dict[str, str]]] = defaultdict(list)
+    for chunk in chunks[:3]:
+        messages = [
+            {"role": "system", "content": """You extract entities and triples from text.Do not over extract. Do not extract generic abstract nouns.
+             Return valid JSON only. No markdown, no explanation. example: 
+            "entities": [
+                {"name": "Attention mechanism", "type": "concept"},
+                {"name": "RNN", "type": "concept"}
+            ],
 
-    for chunk in chunks:
-        response = client.chat.completions() # Returns JSON
+            "triples": [
+                {"subject": "Attention mechanism", "predicate": "allows", "object": "focus on input positions"},
+                {"subject": "Attention mechanism", "predicate": "differs from", "object": "RNN"}
+            ]
+             """},
+            {"role": "user", "content": f"Text: {chunk}"}
+        ]
+
+        response = client.chat.completions.create(
+            model="deepseek-v4-flash",
+            messages=messages,
+            temperature=0.2,
+            response_format={"type": "json_object"}
+        )
         
-        result = response.content
-
+        chunk_result = json.loads(response.choices[0].message.content)
+        aggregated["entities"].extend(chunk_result.get("entities", []))
+        aggregated["triples"].extend(chunk_result.get("triples", []))
 
         # raw chunk goes to a chunk table, tagged with which doc or page it came from.
 
-    return result
+    return aggregated
+
+client = get_client()
+
+chunks = chunk_content(words)
+print(extract(chunks, "file.txt", client))
+
+
+
+
 
 res = {
     "entities": [
@@ -62,7 +97,6 @@ res = {
         {"subject": "Attention mechanism", "predicate": "differs from", "object": "RNN"}
     ]
 }
-
 
 graph = KnowledgeGraph()
 
@@ -98,5 +132,8 @@ def add_entities_and_triples(result, source_doc: str, graph: KnowledgeGraph):
                 source_doc=source_doc
             )
             graph.create_edge(edge)
+    
+    return graph.nodes
 
-add_entities_and_triples(res, "file.txt", graph)
+nodes = add_entities_and_triples(res, "file.txt", graph)
+print(nodes)
