@@ -11,7 +11,7 @@ root = Path(__file__).parent
 class Ingestion:
     def __init__(self):
         self.embedding_model = StaticModel.from_pretrained("MinishLab/potion-retrieval-32M", dimensionality=128)
-        self.chunker = Chunker(60)
+        self.chunker = Chunker(chunk_size=300)
         self.graph = KnowledgeGraph(self.embedding_model)
 
         self.client = get_client()
@@ -83,9 +83,25 @@ class Ingestion:
             #     response_format={"type": "json_object"}
             # )
 
-            # chunk_result = json.loads(response.choices[0].message.content)
+            # raw_content = response.choices[0].message.content
+            raw_content = ""
 
-            chunk_result = {
+            if raw_content.startswith("```json"):
+                raw_content = raw_content[7:]
+            elif raw_content.startswith("```"):
+                raw_content = raw_content[3:]
+            if raw_content.endswith("```"):
+                raw_content = raw_content[:-3]
+            raw_content = raw_content.strip()
+
+            try:
+                chunk_result = json.loads(raw_content)
+            except json.JSONDecodeError as e:
+                print(f"JSON parse error in chunk {i}: {e}")
+                print(f"Raw content: {raw_content[:200]}..")
+                continue
+
+            chunk_result_test = {
                 "entities": [
                     {"name": "Attention mechanism", "type": "concept"},
                     {"name": "RNN", "type": "concept"}
@@ -97,15 +113,19 @@ class Ingestion:
                 ]
             }
 
-            for entity in chunk_result.get("entities", []):
-                print("Processing ", entity)
+            """
+            later validation check: check entity has name, type
+            every triple has subj, pred, obj.
+            """
+
+            for entity in chunk_result_test.get("entities", []):
                 entity["chunk_id"] = chunk_id
             
-            for triple in chunk_result.get("triples", []):
+            for triple in chunk_result_test.get("triples", []):
                 triple["chunk_id"] = chunk_id
             
-            aggregated["entities"].extend(chunk_result.get("entities", []))
-            aggregated["triples"].extend(chunk_result.get("triples", []))
+            aggregated["entities"].extend(chunk_result_test.get("entities", []))
+            aggregated["triples"].extend(chunk_result_test.get("triples", []))
         
         return aggregated
     
@@ -116,12 +136,12 @@ class Ingestion:
         node_map = {}
 
         for entity in entities:
-            name = entity["name"]
+            name = entity["name"].strip()
 
             node = Node(
                 node_type=entity["type"],
-                aliases=[entity["name"]],
-                source_chunk_id=entity["chunk_id"]
+                aliases=[name],
+                source_chunk_ids=[entity["chunk_id"]]
             )
             
             node_id = self.graph.add_node(node) # Same id as node.id if not merged, else existing id
@@ -129,9 +149,9 @@ class Ingestion:
             node_map[name] = node_id
         
         for triple in triples:
-            subj = triple["subject"]
-            pred = triple["predicate"]
-            obj = triple["object"]
+            subj = triple["subject"].strip()
+            pred = triple["predicate"].strip()
+            obj = triple["object"].strip()
 
             if subj in node_map and obj in node_map:
                 edge = Edge(
@@ -141,6 +161,12 @@ class Ingestion:
                     source_chunk_id=triple["chunk_id"]
                 )
                 self.graph.create_edge(edge)
+            
+            """
+            (later)
+            For else cond. (if obj ain't in node_map), auto-create it as a Node
+            of type 'concept' with low confidence.
+            """
 
 if __name__ == "__main__":
     ingestor = Ingestion()

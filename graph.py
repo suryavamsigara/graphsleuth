@@ -1,3 +1,8 @@
+"""
+Chunk <-> Node - One Node can have manu source chunks (many-to-many)
+later in sqlite, a junction table holds chunk ids and Node.
+"""
+
 import uuid
 import numpy as np
 from collections import defaultdict
@@ -9,23 +14,20 @@ from model2vec import StaticModel
 class Node:
     node_type: str
     aliases: list[str]
-    source_chunk_id: str
-    # content: str
+    source_chunk_ids: list[str] # many-to-many
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
 
     @property
     def name(self):
         return self.aliases[0] if self.aliases else "UNKNOWN"
 
-@dataclass
+
+@dataclass(unsafe_hash=True)
 class Edge:
     source_id: str
     target_id: str
     relation: str
     source_chunk_id: str
-
-    def __hash__(self):
-        return 1
 
 @dataclass
 class Document:
@@ -62,6 +64,7 @@ class KnowledgeGraph:
                 existing_node = self.nodes[existing_id]
 
                 existing_node.aliases.append(node.name)
+                existing_node.source_chunk_ids.append(node.source_chunk_ids[0])
                 return existing_id
             
         self.nodes[node.id] = node
@@ -87,7 +90,7 @@ class KnowledgeGraph:
         print("\n--- NODES ---")
         for node_id, node in self.nodes.items():
             print(f"[{node_id[:8]}...] {node.name} ({node.node_type})")
-            print(f"  Source: {node.source_chunk_id}")
+            print(f"  Source: {node.source_chunk_ids}")
             print()
         
         print("\n" + "=" * 50)

@@ -18,7 +18,7 @@ class Chunk:
 
 
 class Chunker:
-    def __init__(self, chunk_size: int, overlap: Optional[int] = None, strategy: Optional[str] = None):
+    def __init__(self, chunk_size: int = 300, overlap: int = 50, strategy: Optional[str] = None):
         self.chunk_size = chunk_size
         self.overlap = overlap
         self.strategy = strategy
@@ -40,7 +40,10 @@ class Chunker:
         
         chunks: list[list[str]] = []
 
-        for i in range(0, len(words), self.chunk_size):
+        if self.chunk_size <= self.overlap:
+            raise ValueError(f"Overlap ({self.overlap}) must be less that ({self.chunk_size})")
+
+        for i in range(0, len(words), self.chunk_size - self.overlap):
             chunks.append(words[i:i+self.chunk_size])
         
         return chunks
