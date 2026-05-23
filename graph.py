@@ -10,6 +10,8 @@ from dataclasses import dataclass, field
 from sklearn.metrics.pairwise import cosine_similarity
 from model2vec import StaticModel
 
+from models import Chunk
+
 @dataclass
 class Node:
     node_type: str
@@ -43,6 +45,7 @@ class KnowledgeGraph:
         self.nodes: dict[str, Node] = {}
         self.edges: set[Edge] = set()
 
+        self.chunks_list: dict[str, Chunk] = {}
         # self.documents: dict[str, Document] = {} # doc_id -> Document
         # self.chunk_to_doc: dict[str, str] = {} # chunk_id -> doc_id
 
@@ -81,6 +84,19 @@ class KnowledgeGraph:
     
     def create_edge(self, edge: Edge):
         self.edges.add(edge)
+
+    def add_chunk(self, chunk: Chunk):
+        """
+        Stores chunk by ID
+        """
+        self.chunks_list[chunk.id] = chunk
+        return chunk.id
+    
+    def get_chunks(self):
+        return self.chunks_list
+    
+    def get_chunk(self, chunk_id: str):
+        return
     
     def print_graph(self):
         print("=" * 50)

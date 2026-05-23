@@ -24,15 +24,21 @@ class Ingestion:
             self.file_content = f.read()
         
         print("\nChunking file content...")
-        chunks_list = self.chunker.chunk_content(self.file_content)
-        print("\nExtracting entities..")
-        extracted = self.extract(chunks_list, file_path)
-        print("\nCreating graph")
-        self.add_entites_and_triples(extracted, file_path)
+        chunks_list = self.chunker.chunk_content(
+            content=self.file_content,
+            source_doc=file_path
+        )
+
+        for chunk in chunks_list[:2]:
+            self.graph.add_chunk(chunk)
+
+            chunk_result = self.extract_chunk(chunk.text, chunk.id)
+
+            self.add_entites_and_triples(chunk_result)
 
 
     # will Replace source_doc with doc_id
-    def extract(self, chunks_list: list[list[str]], source_doc: str) -> dict[str, list]:
+    def extract_chunk(self, chunk_text: str, chunk_id: str) -> dict[str, list]:
         """
         Takes a chunk, calls LLM, returns entities and triples as dicts
         Sends each chunk to an LLM. LLM returns entities and triples.
@@ -50,86 +56,76 @@ class Ingestion:
             - (Transformer, uses, Attention mechanism)
         """
 
-        aggregated = {
-            "entities": [],
-            "triples": []
+        messages = [
+            {"role": "system", "content": """You extract entities and triples from text.Do not over extract. Do not extract generic abstract nouns.
+            Return valid JSON only. No markdown, no explanation. example: 
+            "entities": [
+                {"name": "Attention mechanism", "type": "concept"},
+                {"name": "RNN", "type": "concept"}
+            ],
+
+            "triples": [
+                {"subject": "Attention mechanism", "predicate": "allows", "object": "focus on input positions"},
+                {"subject": "Attention mechanism", "predicate": "differs from", "object": "RNN"}
+            ]
+            """},
+            {"role": "user", "content": f"Text: {chunk_text}"}
+        ]
+
+        # response = self.client.chat.completions.create(
+        #     model="deepseek-v4-flash",
+        #     messages=messages,
+        #     temperature=0.2,
+        #     response_format={"type": "json_object"}
+        # )
+
+        # raw_content = response.choices[0].message.content
+        raw_content = ""
+
+        if raw_content.startswith("```json"):
+            raw_content = raw_content[7:]
+        elif raw_content.startswith("```"):
+            raw_content = raw_content[3:]
+        if raw_content.endswith("```"):
+            raw_content = raw_content[:-3]
+        raw_content = raw_content.strip()
+
+        try:
+            chunk_result = json.loads(raw_content)
+        except json.JSONDecodeError as e:
+            print(f"JSON parse error in chunk: {e}")
+            print(f"Raw content: {raw_content[:200]}..")
+
+        chunk_result_test = {
+            "entities": [
+                {"name": "Attention mechanism", "type": "concept"},
+                {"name": "RNN", "type": "concept"}
+            ],
+
+            "triples": [
+                {"subject": "Attention mechanism", "predicate": "allows", "object": "focus on input positions"},
+                {"subject": "Attention mechanism", "predicate": "differs from", "object": "RNN"}
+            ]
         }
 
-        for i, chunk in enumerate(chunks_list[:2]):
-            chunk_text = ' '.join(chunk).strip(',')
+        """
+        later validation check: check entity has name, type
+        every triple has subj, pred, obj.
+        """
 
-            chunk_id = self.chunker.create_chunk(chunk_text, source_doc, i)
-
-            messages = [
-                {"role": "system", "content": """You extract entities and triples from text.Do not over extract. Do not extract generic abstract nouns.
-                Return valid JSON only. No markdown, no explanation. example: 
-                "entities": [
-                    {"name": "Attention mechanism", "type": "concept"},
-                    {"name": "RNN", "type": "concept"}
-                ],
-
-                "triples": [
-                    {"subject": "Attention mechanism", "predicate": "allows", "object": "focus on input positions"},
-                    {"subject": "Attention mechanism", "predicate": "differs from", "object": "RNN"}
-                ]
-                """},
-                {"role": "user", "content": f"Text: {chunk_text}"}
-            ]
-
-            # response = self.client.chat.completions.create(
-            #     model="deepseek-v4-flash",
-            #     messages=messages,
-            #     temperature=0.2,
-            #     response_format={"type": "json_object"}
-            # )
-
-            # raw_content = response.choices[0].message.content
-            raw_content = ""
-
-            if raw_content.startswith("```json"):
-                raw_content = raw_content[7:]
-            elif raw_content.startswith("```"):
-                raw_content = raw_content[3:]
-            if raw_content.endswith("```"):
-                raw_content = raw_content[:-3]
-            raw_content = raw_content.strip()
-
-            try:
-                chunk_result = json.loads(raw_content)
-            except json.JSONDecodeError as e:
-                print(f"JSON parse error in chunk {i}: {e}")
-                print(f"Raw content: {raw_content[:200]}..")
-                continue
-
-            chunk_result_test = {
-                "entities": [
-                    {"name": "Attention mechanism", "type": "concept"},
-                    {"name": "RNN", "type": "concept"}
-                ],
-
-                "triples": [
-                    {"subject": "Attention mechanism", "predicate": "allows", "object": "focus on input positions"},
-                    {"subject": "Attention mechanism", "predicate": "differs from", "object": "RNN"}
-                ]
-            }
-
-            """
-            later validation check: check entity has name, type
-            every triple has subj, pred, obj.
-            """
-
-            for entity in chunk_result_test.get("entities", []):
-                entity["chunk_id"] = chunk_id
-            
-            for triple in chunk_result_test.get("triples", []):
-                triple["chunk_id"] = chunk_id
-            
-            aggregated["entities"].extend(chunk_result_test.get("entities", []))
-            aggregated["triples"].extend(chunk_result_test.get("triples", []))
+        for entity in chunk_result_test.get("entities", []):
+            entity["chunk_id"] = chunk_id
         
-        return aggregated
+        for triple in chunk_result_test.get("triples", []):
+            triple["chunk_id"] = chunk_id
+
+        return {
+            "entities": chunk_result_test.get("entities", []),
+            "triples": chunk_result_test.get("triples", [])
+        }
+
     
-    def add_entites_and_triples(self, entities_and_triples: dict[str, list], source_doc: str):
+    def add_entites_and_triples(self, entities_and_triples: dict[str, list]):
         entities = entities_and_triples["entities"]
         triples = entities_and_triples["triples"]
 
@@ -175,5 +171,5 @@ if __name__ == "__main__":
     print("GRAPH")
     ingestor.graph.print_graph()
     print("\nChunks")
-    print(ingestor.chunker.get_chunks())
+    print(ingestor.graph.get_chunks())
 
