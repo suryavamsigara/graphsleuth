@@ -3,16 +3,22 @@ from pathlib import Path
 from model2vec import StaticModel
 
 from client import get_client
-from chunker import Chunk, Chunker
+from chunker import Chunker
 from graph import Node, Edge, KnowledgeGraph
 
 root = Path(__file__).parent
 
 class Ingestion:
     def __init__(self):
-        self.embedding_model = StaticModel.from_pretrained("MinishLab/potion-retrieval-32M", dimensionality=128)
+        self.embedding_model = StaticModel.from_pretrained(
+            "MinishLab/potion-retrieval-32M", dimensionality=128
+        )
+        self.querying_model = StaticModel.from_pretrained(
+            "MinishLab/potion-retrieval-32M"
+        ) # 512
+
         self.chunker = Chunker(chunk_size=300)
-        self.graph = KnowledgeGraph(self.embedding_model)
+        self.graph = KnowledgeGraph(self.embedding_model, self.querying_model)
 
         self.client = get_client()
         self.file_content = ""
@@ -24,17 +30,17 @@ class Ingestion:
             self.file_content = f.read()
         
         print("\nChunking file content...")
-        chunks_list = self.chunker.chunk_content(
+        chunks = self.chunker.chunk_content(
             content=self.file_content,
             source_doc=file_path
         )
 
-        for chunk in chunks_list[:2]:
+        for chunk in chunks[:3]:
             self.graph.add_chunk(chunk)
 
-            chunk_result = self.extract_chunk(chunk.text, chunk.id)
+            e_and_t = self.extract_chunk(chunk.text, chunk.id)
 
-            self.add_entites_and_triples(chunk_result)
+            self.add_entites_and_triples(e_and_t)
 
 
     # will Replace source_doc with doc_id
@@ -72,15 +78,15 @@ class Ingestion:
             {"role": "user", "content": f"Text: {chunk_text}"}
         ]
 
-        # response = self.client.chat.completions.create(
-        #     model="deepseek-v4-flash",
-        #     messages=messages,
-        #     temperature=0.2,
-        #     response_format={"type": "json_object"}
-        # )
+        response = self.client.chat.completions.create(
+            model="deepseek-v4-flash",
+            messages=messages,
+            temperature=0.2,
+            response_format={"type": "json_object"}
+        )
 
-        # raw_content = response.choices[0].message.content
-        raw_content = ""
+        raw_content = response.choices[0].message.content
+        # raw_content = ""
 
         if raw_content.startswith("```json"):
             raw_content = raw_content[7:]
@@ -94,34 +100,34 @@ class Ingestion:
             chunk_result = json.loads(raw_content)
         except json.JSONDecodeError as e:
             print(f"JSON parse error in chunk: {e}")
-            print(f"Raw content: {raw_content[:200]}..")
+            return {"entities": [], "triples": []}
 
-        chunk_result_test = {
-            "entities": [
-                {"name": "Attention mechanism", "type": "concept"},
-                {"name": "RNN", "type": "concept"}
-            ],
+        # chunk_result_test = {
+        #     "entities": [
+        #         {"name": "Attention mechanism", "type": "concept"},
+        #         {"name": "RNN", "type": "concept"}
+        #     ],
 
-            "triples": [
-                {"subject": "Attention mechanism", "predicate": "allows", "object": "focus on input positions"},
-                {"subject": "Attention mechanism", "predicate": "differs from", "object": "RNN"}
-            ]
-        }
+        #     "triples": [
+        #         {"subject": "Attention mechanism", "predicate": "allows", "object": "focus on input positions"},
+        #         {"subject": "Attention mechanism", "predicate": "differs from", "object": "RNN"}
+        #     ]
+        # }
 
         """
         later validation check: check entity has name, type
         every triple has subj, pred, obj.
         """
 
-        for entity in chunk_result_test.get("entities", []):
+        for entity in chunk_result.get("entities", []):
             entity["chunk_id"] = chunk_id
         
-        for triple in chunk_result_test.get("triples", []):
+        for triple in chunk_result.get("triples", []):
             triple["chunk_id"] = chunk_id
 
         return {
-            "entities": chunk_result_test.get("entities", []),
-            "triples": chunk_result_test.get("triples", [])
+            "entities": chunk_result.get("entities", []),
+            "triples": chunk_result.get("triples", [])
         }
 
     
