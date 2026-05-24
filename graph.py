@@ -4,8 +4,10 @@ later in sqlite, a junction table holds chunk ids and Node.
 """
 
 import uuid
+import hashlib
 import numpy as np
-from collections import deque
+from datetime import datetime, timezone
+from collections import deque, defaultdict
 from typing import Optional
 from dataclasses import dataclass, field
 from sklearn.metrics.pairwise import cosine_similarity
@@ -17,6 +19,7 @@ from models import Chunk
 class Node:
     node_type: str
     aliases: list[str]
+    description: str
     source_chunk_ids: list[str] # many-to-many
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
 
@@ -37,6 +40,8 @@ class Document:
     path: str
     name: str
     chunks: list[str] # List of chunk IDs
+    checksum: str
+    ingested_at: str
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
 
 class KnowledgeGraph:
@@ -44,11 +49,11 @@ class KnowledgeGraph:
         self.threshold = 0.85
 
         self.nodes: dict[str, Node] = {}
-        self.edges: set[Edge] = set()
-
+        self.adj_list: dict[str, list[Edge]] = defaultdict(list)
         self.chunks_list: dict[str, Chunk] = {}
-        # self.documents: dict[str, Document] = {} # doc_id -> Document
-        # self.chunk_to_doc: dict[str, str] = {} # chunk_id -> doc_id
+
+        self.documents: dict[str, Document] = {} # doc_id -> Document
+        self.doc_checksums: set[str] = set() # Set of processed SHA-256 strings
 
         # Matrix for node matching during insertion
         self.embedding_matrix: np.ndarray | None = None
@@ -58,12 +63,50 @@ class KnowledgeGraph:
         # Matrix for query matching
         self.querying_matrix: np.ndarray | None = None
         self.querying_model = querying_model
+
+    @staticmethod
+    def calculate_checksum(file_path: str) -> str:
+        """
+        Reads a file in binary chunks and computes its unique SHA-256 hash.
+        Reads in chunks ensuring large files don't crash system memory.
+        """
+        sha256_hash = hashlib.sha256()
+        try:
+            with open(file_path, "rb") as f:
+                for byte_block in iter(lambda: f.read(4096), b""):
+                    sha256_hash.update(byte_block)
+            return sha256_hash.hexdigest()
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Could not calculate checksum. File missing: {file_path}")
+    
+    def register_document(self, file_path: str, file_name: str, chunk_ids: list[str]) -> str | None:
+        """
+        Calculates file checksum, verifies duplicates, and registers the doc.
+        """
+        checksum = KnowledgeGraph.calculate_checksum(file_path)
+
+        if checksum in self.doc_checksums:
+            print(f"Skipping ingestion: Document '{file_name}' already exists.")
+            return None
+        
+        new_doc = Document(
+            path=file_path,
+            name=file_name,
+            chunks=chunk_ids,
+            checksum=checksum,
+            ingested_at=datetime.now(timezone.utc).isoformat()
+        )
+
+        self.documents[new_doc.id] = new_doc
+        self.doc_checksums.add(checksum)
+        
+        return new_doc.id
     
     def add_node(self, node: Node):
         new_embedding = self.embedding_model.encode(node.name)
         reshaped_embedding = new_embedding.reshape(1, -1)
 
-        new_querying_embedding = self.querying_model.encode(node.name).reshape(1, -1)
+        new_querying_embedding = self.querying_model.encode(node.name + " " + node.description).reshape(1, -1)
 
         if self.embedding_matrix is not None and len(self.embedding_matrix) > 0:
             similarities = cosine_similarity(reshaped_embedding, self.embedding_matrix)
@@ -93,7 +136,11 @@ class KnowledgeGraph:
         return node.id
     
     def create_edge(self, edge: Edge):
-        self.edges.add(edge)
+        """
+        Stores edges in an adjacency list for O(1) node connection lookups.
+        """
+        self.adj_list[edge.source_id].append(edge)
+        self.adj_list[edge.target_id].append(edge)
 
     def add_chunk(self, chunk: Chunk):
         """
@@ -147,11 +194,11 @@ class KnowledgeGraph:
             if curr_depth >= max_depth:
                 continue
 
-            for edge in self.edges:
+            for edge in self.adj_list[node_id]:
                 neighbor_id = None
                 if edge.source_id == node_id:
                     neighbor_id = edge.target_id
-                elif edge.target_id == node_id:
+                else:
                     neighbor_id = edge.source_id
                 
                 if neighbor_id and neighbor_id not in visited:
@@ -166,6 +213,33 @@ class KnowledgeGraph:
         chunk_texts = [self.chunks_list[cid].text for cid in source_chunk_ids if cid in self.chunks_list]
         
         return chunk_texts
+    
+    def get_neighborhood(self, node_id: str, depth: int = 2) -> list[Node]:
+        visited = {node_id}
+        queue = deque((node_id, 0))
+
+        while queue:
+            n_id, curr_depth = queue.popleft()
+
+            if curr_depth >= depth:
+                continue
+
+            for edge in self.adj_list[node_id]:
+                neighbor_id = None
+                if edge.source_id == n_id:
+                    neighbor_id = edge.target_id
+                else:
+                    neighbor_id = edge.source_id
+                
+                if neighbor_id and neighbor_id not in visited:
+                    visited.add(neighbor_id)
+                    queue.append((neighbor_id, curr_depth + 1))
+        
+        return [self.nodes[n_id] for n_id in visited]
+        
+    def _get_total_edges_count(self) -> int:
+        total_entries = sum(len(edges) for edges in self.adj_list.values())
+        return total_entries // 2
 
     def print_graph(self):
         print("=" * 50)
@@ -180,6 +254,6 @@ class KnowledgeGraph:
         
         print("\n" + "=" * 50)
         print(f"Total nodes: {len(self.nodes)}")
-        print(f"Total edges: {len(self.edges)}")
+        print(f"Total edges: {self._get_total_edges_count()}")
         print("=" * 50)
 

@@ -17,7 +17,7 @@ class Ingestion:
             "MinishLab/potion-retrieval-32M"
         ) # 512
 
-        self.chunker = Chunker(chunk_size=300)
+        self.chunker = Chunker(chunk_size=200)
         self.graph = KnowledgeGraph(self.embedding_model, self.querying_model)
 
         self.client = get_client()
@@ -25,6 +25,11 @@ class Ingestion:
     
     def run(self, file_path: str):
         file = root / file_path
+
+        doc_hash = self.graph.calculate_checksum(str(file))
+        if doc_hash in self.graph.doc_checksums:
+            print(f"Skipping pipeline: '{file.name}' already ingested.")
+            return
 
         with open(file, "r", encoding="utf-8") as f:
             self.file_content = f.read()
@@ -35,12 +40,24 @@ class Ingestion:
             source_doc=file_path
         )
 
+        processed_chunk_ids = []
+
         for chunk in chunks[:3]:
             self.graph.add_chunk(chunk)
+            processed_chunk_ids.append(chunk.id)
 
+            print("Extracting from chunks..")
             e_and_t = self.extract_chunk(chunk.text, chunk.id)
 
+            print("Creating graph..")
             self.add_entites_and_triples(e_and_t)
+        
+        self.graph.register_document(
+            file_path=str(file),
+            file_name=file.name,
+            chunk_ids=processed_chunk_ids
+        )
+        print("Ingestion execution completed successfully.")
 
 
     # will Replace source_doc with doc_id
@@ -63,27 +80,43 @@ class Ingestion:
         """
 
         messages = [
-            {"role": "system", "content": """You extract entities and triples from text.Do not over extract. Do not extract generic abstract nouns.
-            Return valid JSON only. No markdown, no explanation. example: 
-            "entities": [
-                {"name": "Attention mechanism", "type": "concept"},
-                {"name": "RNN", "type": "concept"}
-            ],
+            {
+                "role": "system",
+                "content": """You extract entities and triples from text to build a Knowledge Graph. Do not over extract. Do not extract generic abstract nouns.
+                CRITICAL: For every entity, write a detailed description containing exactly 20 to 25 words. 
+                OPTIMIZATION RULE: Frame the description to optimize future vector search queries. Focus heavily on technical characteristics, actions, associations, and domain-specific keywords present in the text. Avoid conversational padding.
+                Return valid JSON only. No markdown, no explanation.
+                Example output format: 
+                {
+                    "entities": [
+                        {
+                            "name": "Attention mechanism",
+                            "type": "concept",
+                            "description": "An architectural component in neural networks that enables models to dynamically focus on specific segments of input sequences, improving long-range dependency tracking."
+                        },
+                        {
+                            "name": "RNN",
+                            "type": "concept",
+                            "description": "A class of artificial neural networks where connections between nodes form a directed graph along a temporal sequence, allowing processing of variable length inputs."
+                        }
+                    ],
 
-            "triples": [
-                {"subject": "Attention mechanism", "predicate": "allows", "object": "focus on input positions"},
-                {"subject": "Attention mechanism", "predicate": "differs from", "object": "RNN"}
-            ]
-            """},
+                    "triples": [
+                        {"subject": "Attention mechanism", "predicate": "allows", "object": "focus on input positions"},
+                        {"subject": "Attention mechanism", "predicate": "differs from", "object": "RNN"}
+                    ]
+                }"""
+            },
             {"role": "user", "content": f"Text: {chunk_text}"}
         ]
-
+        print("LLM CALL")
         response = self.client.chat.completions.create(
             model="deepseek-v4-flash",
             messages=messages,
             temperature=0.2,
             response_format={"type": "json_object"}
         )
+        print("LLM CALL ENDED")
 
         raw_content = response.choices[0].message.content
         # raw_content = ""
@@ -104,8 +137,8 @@ class Ingestion:
 
         # chunk_result_test = {
         #     "entities": [
-        #         {"name": "Attention mechanism", "type": "concept"},
-        #         {"name": "RNN", "type": "concept"}
+        #         {"name": "Attention mechanism", "type": "concept", "description": "An architectural component in neural networks that enables models to dynamically focus on specific segments of input sequences, improving long-range dependency tracking."},
+        #         {"name": "RNN", "type": "concept", "description": "A class of artificial neural networks where connections between nodes form a directed graph along a temporal sequence, allowing processing of variable length inputs."}
         #     ],
 
         #     "triples": [
@@ -143,6 +176,7 @@ class Ingestion:
             node = Node(
                 node_type=entity["type"],
                 aliases=[name],
+                description=entity["description"],
                 source_chunk_ids=[entity["chunk_id"]]
             )
             
@@ -171,11 +205,11 @@ class Ingestion:
             """
 
 if __name__ == "__main__":
-    ingestor = Ingestion()
+    pipeline = Ingestion()
 
-    ingestor.run("file.txt")
+    pipeline.run("file.txt")
     print("GRAPH")
-    ingestor.graph.print_graph()
+    pipeline.graph.print_graph()
     print("\nChunks")
-    print(ingestor.graph.get_chunks())
+    print(pipeline.graph.get_chunks())
 
