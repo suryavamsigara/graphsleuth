@@ -101,35 +101,21 @@ class KnowledgeGraph:
         self.doc_checksums.add(checksum)
         
         return new_doc.id
-    
-    def add_node(self, node: Node):
-        new_embedding = self.embedding_model.encode(node.name)
-        reshaped_embedding = new_embedding.reshape(1, -1)
 
-        new_querying_embedding = self.querying_model.encode(node.name + " " + node.description).reshape(1, -1)
-
-        if self.embedding_matrix is not None and len(self.embedding_matrix) > 0:
-            similarities = cosine_similarity(reshaped_embedding, self.embedding_matrix)
-            max_sim = similarities.max()
-
-            if max_sim > self.threshold:
-                max_idx = similarities.argmax()
-                existing_id = self.embedding_ids[max_idx]
-                existing_node = self.nodes[existing_id]
-
-                existing_node.aliases.append(node.name)
-                existing_node.source_chunk_ids.append(node.source_chunk_ids[0])
-                return existing_id
-            
+    def add_node(self, node: Node) -> str:
+        """
+        Accepts the heavily validated node from ingestion.
+        Embeds only the canonical name for future user search queries.
+        """
         self.nodes[node.id] = node
 
-        # Update embedding matrix
+        # Embed for graph retrieval
+        search_text = f"{node.name} {node.description}".strip()
+        new_querying_embedding = self.querying_model.encode(search_text).reshape(1, -1)
 
-        if self.embedding_matrix is None:
-            self.embedding_matrix = reshaped_embedding
+        if self.querying_matrix is None:
             self.querying_matrix = new_querying_embedding
         else:
-            self.embedding_matrix = np.vstack((self.embedding_matrix, reshaped_embedding))
             self.querying_matrix = np.vstack((self.querying_matrix, new_querying_embedding))
         
         self.embedding_ids.append(node.id)
