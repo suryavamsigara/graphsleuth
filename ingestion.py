@@ -111,6 +111,10 @@ class Ingestion:
         canonical_map = {}
         merged_indices = set()
 
+        print("RAW: ", raw_entities)
+        print()
+        print("NAMES: ", names)
+
         for i, name in enumerate(names):
             if i in merged_indices: continue
             

@@ -222,6 +222,29 @@ class KnowledgeGraph:
                     queue.append((neighbor_id, curr_depth + 1))
         
         return [self.nodes[n_id] for n_id in visited]
+
+    def traverse(self, question: str):
+        top_node_id = self._get_top_k_nodes(question, 1)
+
+        visited = set(top_node_id)
+        queue = deque((top_node_id, 0))
+
+        while queue:
+            node_id, curr_depth = queue.popleft()
+            desc_list = [] # [(node_id, description)]
+
+            for edge in self.adj_list[node_id]:
+                neighbour_id = None
+                
+                if edge.source_id == node_id:
+                    neighbour_id == edge.target_id
+
+                    desc_list.append((neighbour_id, self.nodes[neighbour_id].description))
+            
+            # take embeddings of description, query with them, and pick only one, add it to the queue
+            embeds = []
+            
+        
         
     def _get_total_edges_count(self) -> int:
         total_entries = sum(len(edges) for edges in self.adj_list.values())
