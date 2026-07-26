@@ -187,12 +187,25 @@ class GraphStore:
         checksum TEXT UNIQUE NOT NULL,
         ingested_at TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS evidence_paths (
+        id TEXT PRIMARY KEY,
+        question TEXT NOT NULL,
+        entry_nodes TEXT,               -- JSON array
+        visited_nodes TEXT,             -- JSON array
+        traversed_edges TEXT,           -- JSON array of edge dicts
+        source_chunks TEXT,             -- JSON array
+        answer TEXT,
+        confidence REAL,
+        created_at TEXT
+    );
     
 
     CREATE INDEX IF NOT EXISTS idx_edges_source ON edges(source_id);
     CREATE INDEX IF NOT EXISTS idx_edges_target ON edges(target_id);
     CREATE INDEX IF NOT EXISTS idx_edges_relation ON edges(relation);
     CREATE INDEX IF NOT EXISTS idx_chunks_doc ON chunks(document_id);
+    CREATE INDEX IF NOT EXISTS idx_evidence_question ON evidence_paths(question);
     """
 
     def __init__(self, db_path: str = "graphsleuth.db"):
@@ -204,6 +217,8 @@ class GraphStore:
     def _init_schema(self):
         self._conn.executescript(self.SCHEMA)
         self._conn.commit()
+
+    # -- Nodes --
 
     def save_node(self, node: Node) -> None:
         self._conn.execute(
@@ -223,6 +238,8 @@ class GraphStore:
         self._conn.execute("DELETE FROM edges WHERE source_id = ? OR target_id = ?", (node_id, node_id))
         self._conn.commit()
 
+    # -- Edges --
+
     def save_edge(self, edge: Edge) -> bool:
         """Returns True if inserted, False if duplicate."""
         try:
@@ -240,6 +257,27 @@ class GraphStore:
     def load_edges(self) -> list[Edge]:
         rows = self._conn.execute("SELECT * FROM edges").fetchall()
         return [Edge.from_dict(dict(row)) for row in rows]
+
+    def get_edges_from(self, node_id: str) -> list[Edge]:
+        rows = self._conn.execute(
+            "SELECT * FROM edges WHERE source_id = ?", (node_id,)
+        ).fetchall()
+        return [Edge.from_dict(dict(row)) for row in rows]
+
+    def get_edges_to(self, node_id: str) -> list[Edge]:
+        rows = self._conn.execute(
+            "SELECT * FROM edges WHERE target_id = ?", (node_id,)
+        ).fetchall()
+        return [Edge.from_dict(dict(row)) for row in rows]
+
+    def get_edges_between(self, source_id: str, target_id: str) -> list[Edge]:
+        rows = self._conn.execute(
+            "SELECT * FROM edges WHERE source_id = ? AND target_id = ?",
+            (source_id, target_id),
+        ).fetchall()
+        return [Edge.from_dict(dict(row)) for row in rows]
+
+    # -- Chunks --
 
     def save_chunk(self, chunk: Chunk) -> None:
         self._conn.execute(
@@ -274,6 +312,7 @@ class GraphStore:
             index=row["idx"],
         )
 
+    # -- Documents --
 
     def save_document(self, doc: Document) -> None:
         self._conn.execute(
@@ -288,6 +327,15 @@ class GraphStore:
     def load_documents(self) -> dict[str, Document]:
         rows = self._conn.execute("SELECT * FROM DOCUMENTS").fetchall()
         return {row["id"]: Document.from_dict(dict(row)) for row in rows}
+
+    def get_document_by_checksum(self, checksum: str) -> Optional[Document]:
+        row = self._conn.execute(
+            "SELECT * FROM documents WHERE checksum = ?",
+            {checksum,}
+        ).fetchone()
+        if row is None:
+            return None
+        return Document.from_dict(dict(row))
 
     def close(self):
         self._conn.close()
