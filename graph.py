@@ -6,7 +6,7 @@ import numpy as np
 from pathlib import Path
 from datetime import datetime, timezone
 from collections import deque, defaultdict
-from typing import Optional, Iterator
+from typing import Optional
 from dataclasses import dataclass, field
 from sklearn.metrics.pairwise import cosine_similarity
 from model2vec import StaticModel
@@ -754,3 +754,40 @@ class KnowledgeGraph:
             confidence=round(avg_confidence, 4),
         )
 
+
+    # ---------------------------------------------------------------------------
+    # Graph metrics for analysis
+    # ---------------------------------------------------------------------------
+    def get_metrics(self) -> dict:
+        """Computes basic graph statistics"""
+        n_nodes = len(self.nodes)
+        n_edges = sum(len(e) for e in self.out_edges.values())
+        n_chunks = len(self.chunks)
+        n_docs = len(self.documents)
+
+        return {
+            "node_count": n_nodes,
+            "edge_count": n_edges,
+            "chunk_count": n_chunks,
+            "document_count": n_docs,
+        }
+
+    def get_central_nodes(self, top_k: int = 10) -> list[tuple[str, int]]:
+        """Returns nodes sorted by total degree"""
+        degrees = []
+        for nid in self.nodes:
+            deg = len(self.out_edges.get(nid, [])) + len(self.in_edges.get(nid, []))
+            degrees.append((nid, deg))
+        degrees.sort(key=lambda x: x[1], reverse=True)
+        return degrees[:top_k]
+
+    # ---------------------------------------------------------------------------
+    # Evidence persistence
+    # ---------------------------------------------------------------------------
+    def save_evidence(self, evidence: EvidencePath) -> str:
+        """Persist an evidence path and return its ID."""
+        return self.store.save_evidence(evidence)
+
+    def get_pas_evidence(self, question: str) -> list[EvidencePath]:
+        """Retrieves previously saved evidence paths for a question"""
+        return self.store.load_evidence_for_question(question)
