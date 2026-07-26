@@ -337,10 +337,48 @@ class GraphStore:
             return None
         return Document.from_dict(dict(row))
 
+    # -- Evidence Paths --
+
+    def save_evidence(self, ev: EvidencePath) -> str:
+        d = ev.to_dict()
+        self._conn.execute(
+            """INSERT INTO evidence_paths
+            (id, question, entry_nodes, visited_nodes, traversed_edges, source_chunks, answer, confidence, created_at)
+            VALUES (:id, :question, :entry_nodes, :visited_nodes, :traversed_edges, :source_chunks, :answer, :confidence, :created_at)""",
+            d,
+        )
+        self._conn.commit()
+        return d["id"]
+
+    def load_evidence_for_question(self, question: str, limit: int = 10) -> list[EvidencePath]:
+        rows = self._conn.execute(
+            """SELECT * FROM evidence_paths
+            WHERE question = ?
+            ORDER BY confidence DESC, created_at DESC LIMIT ?""",
+            (question, limit),
+        ).fetchall()
+        return [self._row_to_evidence(dict(row)) for row in rows]
+
+    def _row_to_evidence(self, d: dict) -> EvidencePath:
+        edge_dicts = json.loads(d["traversed_edges"])
+        return EvidencePath(
+            question=d["question"],
+            entry_nodes=json.loads(d["entry_nodes"]),
+            visited_nodes=json.loads(d["visited_nodes"]),
+            traversed_edges=[Edge.from_dict(e) for e in edge_dicts],
+            source_chunks=json.loads(d["source_chunks"]),
+            answer=d["answer"],
+            confidence=d["confidence"],
+            created_at=d["created_at"]
+        )
+
     def close(self):
         self._conn.close()
 
 
+# ---------------------------------------------------------------------------
+# Knowledge Graph (in memory cache + SQLite persistence)
+# ---------------------------------------------------------------------------
 
 class KnowledgeGraph:
     """
@@ -353,12 +391,13 @@ class KnowledgeGraph:
         db_path: str = "graphsleuth.db",
         dedup_threshold: float = 0.92,
     ):
-        self.dedup_threshold = 0.92
+        self.dedup_threshold = dedup_threshold
         self.embedding_model = embedding_model
         self.querying_model = querying_model
 
         self.store = GraphStore(db_path)
 
+        # in memory caches (loaded from SQLite on init)
         self.nodes: dict[str, Node] = self.store.load_nodes()
         self.chunks: dict[str, Chunk] = self.store.load_chunks()
         self.documents: dict[str, Document] = self.store.load_documents()
@@ -476,6 +515,7 @@ class KnowledgeGraph:
     def get_chunks_for_document(self, doc_id: str) -> list[Chunk]:
         """Get all chunks belonging to a document."""
         return [c for c in self.chunks.values() if c.document_id == doc_id]
+    
 
     # ------------------------------------------
     # Node operations
@@ -523,6 +563,7 @@ class KnowledgeGraph:
         for tgt, edges in self.in_edges.items():
             self.in_edges[tgt] = [e for e in edges if e.source_id != node_id]
 
+        # Will optimize later
         self._rebuild_query_matrix()
 
     # ------------------------------------------
