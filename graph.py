@@ -1,8 +1,3 @@
-"""
-Chunk <-> Node - One Node can have manu source chunks (many-to-many)
-later in sqlite, a junction table holds chunk ids and Node.
-"""
-
 import uuid
 import json
 import hashlib
@@ -124,6 +119,37 @@ class Document:
         )
 
 
+@dataclass
+class EvidencePath:
+    """
+    A traceable path through the graph that an agent followed to answer a question.
+    """
+    question: str
+    entry_nodes: list[str]
+    visited_nodes: list[str]
+    traversed_edges: list[Edge]
+    source_chunks: list[str]
+    answer: str = ""
+    confidence: float = 0.0
+    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    
+    def to_dict(self) -> dict:
+        return {
+            "id": str(uuid.uuid4()),
+            "question": self.question,
+            "entry_nodes": json.dumps(self.entry_nodes),
+            "visited_nodes": json.dumps(self.visited_nodes),
+            "traversed_edges": json.dumps([e.to_dict() for e in self.traversed_edges]),
+            "source_chunks": json.dumps(self.source_chunks),
+            "answer": self.answer,
+            "confidence": self.confidence,
+            "created_at": self.created_at,
+        }
+
+
+# ---------------------------------------------------------------------------
+# SQLite persistence layer
+# ---------------------------------------------------------------------------
 
 class GraphStore:
     SCHEMA = """
@@ -223,7 +249,7 @@ class GraphStore:
         )
         self._conn.commit()
 
-    def load_chunk(self) -> dict[str, Chunk]:
+    def load_chunks(self) -> dict[str, Chunk]:
         rows = self._conn.execute("SELECT * FROM chunks").fetchall()
         return {
             row["id"]: Chunk(
@@ -269,24 +295,77 @@ class GraphStore:
 
 
 class KnowledgeGraph:
-    def __init__(self, embedding_model: StaticModel, querying_model: StaticModel):
-        self.threshold = 0.85
-
-        self.nodes: dict[str, Node] = {}
-        self.adj_list: dict[str, list[Edge]] = defaultdict(list)
-        self.chunks_list: dict[str, Chunk] = {}
-
-        self.documents: dict[str, Document] = {} # doc_id -> Document
-        self.doc_checksums: set[str] = set() # Set of processed SHA-256 strings
-
-        # Matrix for node matching during insertion
-        self.embedding_matrix: np.ndarray | None = None
-        self.embedding_ids: list[str] = []
+    """
+    The main graph interface. All data lives in SQLite.
+    """
+    def __init__(
+        self,
+        embedding_model: StaticModel,
+        querying_model: StaticModel,
+        db_path: str = "graphsleuth.db",
+        dedup_threshold: float = 0.92,
+    ):
+        self.dedup_threshold = 0.92
         self.embedding_model = embedding_model
-
-        # Matrix for query matching
-        self.querying_matrix: np.ndarray | None = None
         self.querying_model = querying_model
+
+        self.store = GraphStore(db_path)
+
+        self.nodes: dict[str, Node] = self.store.load_nodes()
+        self.chunks: dict[str, Chunk] = self.store.load_chunks()
+        self.documents: dict[str, Document] = self.store.load_documents()
+        self.doc_checksums: set[str] = {
+            d.checksum for d in self.documents.values()
+        }
+
+        self.out_edges: dict[str, list[Edge]] = defaultdict(list)
+        self.in_edges: dict[str, list[Edge]] = defaultdict(list)
+        self._load_edges_into_cache()
+
+        self.querying_matrix: Optional[np.ndarray] = None
+        self.querying_ids: list[str] = []
+        self._rebuild_query_matrix()
+
+    def _load_edges_into_cache(self):
+        """Load all edges from SQLite into directional caches."""
+        self.out_edges.clear()
+        self.in_edges.clear()
+        for edge in self.store.load_edges():
+            self.out_edges[edge.source_id].append(edge)
+            self.in_edges[edge.target_id].append(edge)
+
+    def _rebuild_query_matrix(self):
+        """Rebuild the querying embedding matrix from all nodes."""
+        if not self.nodes:
+            self.querying_matrix = None
+            self.querying_ids = []
+            return
+
+        texts = []
+        ids = []
+        for node_id, node in self.nodes.items():
+            texts.append(f"{node.name} {node.description}".strip())
+            ids.append(node_id)
+
+        embeddings = self.querying_model.encode(texts)
+        self.querying_matrix = np.vstack(embeddings)
+        self.querying_ids = ids
+
+    def _add_to_query_matrix(self, node: Node):
+        """Incrementally add a single node's embedding to the matrix."""
+        text = f"{node.name} {node.description}".strip()
+        emb = self.querying_model.encode(text).reshape(1, -1)
+
+        if self.querying_matrix is None:
+            self.querying_matrix = emb
+            self.querying_ids = [node.id]
+        else:
+            self.querying_matrix = np.vstack((self.querying_matrix, emb))
+            self.querying_ids.append(node.id)
+
+    # ------------------------------------------
+    # Document operations
+    # ------------------------------------------
 
     @staticmethod
     def calculate_checksum(file_path: str) -> str:
@@ -323,274 +402,266 @@ class KnowledgeGraph:
 
         self.documents[new_doc.id] = new_doc
         self.doc_checksums.add(checksum)
+        self.store.save_document(new_doc)
         
         return new_doc.id
 
+    # ------------------------------------------
+    # Chunk Operations
+    # ------------------------------------------
+
+    def add_chunk(self, chunk: Chunk) -> str:
+        """Store a chunk and persist it."""
+        self.chunks[chunk.id] = chunk
+        self.store.save_chunk(chunk)
+        return chunk.id
+
+    def get_chunk(self, chunk_id: str) -> Optional[Chunk]:
+        """Get a chunk by ID (from cache, fallback to sqlite)."""
+        if chunk_id in self.chunks:
+            return self.chunks[chunk_id]
+        chunk = self.store.get_chunk(chunk_id)
+        if chunk:
+            self.chunks[chunk_id] = chunk
+        return chunk
+
+    def get_chunks_for_document(self, doc_id: str) -> list[Chunk]:
+        """Get all chunks belonging to a document."""
+        return [c for c in self.chunks.values() if c.document_id == doc_id]
+
+    # ------------------------------------------
+    # Node operations
+    # ------------------------------------------
+
     def add_node(self, node: Node) -> str:
         """
-        Accepts the heavily validated node from ingestion.
-        Embeds only the canonical name for future user search queries.
+        Adds a node to the graph, persists it, and updates the embedding matrix.
         """
         self.nodes[node.id] = node
-
-        # Embed for graph retrieval
-        search_text = f"{node.name} {node.description}".strip()
-        new_querying_embedding = self.querying_model.encode(search_text).reshape(1, -1)
-
-        if self.querying_matrix is None:
-            self.querying_matrix = new_querying_embedding
-        else:
-            self.querying_matrix = np.vstack((self.querying_matrix, new_querying_embedding))
-        
-        self.embedding_ids.append(node.id)
+        self.store.save_node(node)
+        self._add_to_query_matrix(node)
         return node.id
-    
-    def create_edge(self, edge: Edge):
-        """
-        Stores edges in an adjacency list for O(1) node connection lookups.
-        """
-        self.adj_list[edge.source_id].append(edge)
-        self.adj_list[edge.target_id].append(edge)
 
-    def add_chunk(self, chunk: Chunk):
+    def get_node(self, node_id: str) -> Optional[Node]:
+        return self.nodes.get(node_id)
+
+    def update_node_chunks(self, node_id: str, new_chunk_id: str) -> bool:
+        """Add a new source chunk to an existing node (for dedup merges)."""
+        node = self.nodes.get(node_id)
+        if node is None:
+            return False
+        if new_chunk_id not in node.source_chunk_ids:
+            node.source_chunk_ids.append(new_chunk_id)
+            self.store.save_node(node)
+        return True
+
+    def get_nodes_by_type(self, node_type: str) -> list[Node]:
+        """Filters nodes by type"""
+        nt = node_type.upper()
+        return [n for n in self.nodes.values() if n.node_type.upper() == nt]
+
+    def delete_node(self, node_id: str) -> None:
+        """Remove a node and all its edged from the graph."""
+        if node_id not in self.nodes:
+            return
+        self.store.delete_node(node_id)
+        del self.nodes[node_id]
+
+        # Remove from adjacency caches
+        self.out_edges.pop(node_id, None)
+        self.in_edges.pop(node_id, None)
+        for src, edges in self.out_edges.items():
+            self.out_edges[src] = [e for e in edges if e.target_id != node_id]
+        for tgt, edges in self.in_edges.items():
+            self.in_edges[tgt] = [e for e in edges if e.source_id != node_id]
+
+        self._rebuild_query_matrix()
+
+    # ------------------------------------------
+    # Edge operations
+    # ------------------------------------------
+    
+    def create_edge(self, edge: Edge) -> bool:
         """
-        Stores chunk by ID
+        Add an edge to the graph. Returns True if new, False if duplicate.
         """
-        self.chunks_list[chunk.id] = chunk
-        return chunk.id
+        if edge.source_id not in self.nodes or edge.target_id not in self.nodes:
+            raise ValueError(
+                f"Edge references non-existent node: {edge.source_id} -> {edge.target_id}"
+            )
+
+        if edge.source_id == edge.target_id:
+            raise ValueError("Self-loops are not allowed")
+
+        inserted = self.store.save_edge(edge)
+        if inserted:
+            self.out_edges[edge.source_id].append(edge)
+            self.in_edges[edge.target_id].append(edge)
+        return inserted
+
+    def get_outgoing_edges(self, node_id: str) -> list[Edge]:
+        """Get all edges where node+id is the source."""
+        return list[self.out_edges.get(node_id, [])]
+
+    def get_incoming_edges(self, node_id: str) -> list[Edge]:
+        """Get all edges where node_id is the target."""
+        return list[self.in_edges.get(node_id, [])]
+
+    def get_all_edges(self, node_id: str) -> list[Edge]:
+        """Get all edges connected to node_id (both directions)."""
+        seen = set()
+        result = []
+        for e in self.out_edges.get(node_id, []) + self.in_edges.get(node_id, []):
+            if e.id not in seen:
+                seen.add(e.id)
+                result.append(e)
+        return result
+
+    def get_edges_between(self, source_id: str, target_id: str) -> list[Edge]:
+        """Get all direct edges from source to target."""
+        return [e for e in self.out_edges.get(source_id, []) if e.target_id == target_id]
+
+    def edge_exists(self, source_id: str, target_id: str, relation: str) -> bool:
+        """Checks if a specific directed edge already exists."""
+        for e in self.out_edges.get(source_id, []):
+            if e.target_id == target_id and e.relation == relation:
+                return True
+        return False
+
+    # ------------------------------------------------------------------
+    # Retrieval: entry point search
+    # ------------------------------------------------------------------
     
-    def get_chunks(self):
-        return self.chunks_list
-    
-    def get_chunk(self, chunk_id: str):
-        return
-    
-    def _get_top_k_nodes(self, question: str, k: int = 5) -> list[str]:
-        """Helper method to find initial entry points in the graph."""
+    def get_top_k_nodes(self, query: str, k: int = 5) -> list[tuple[str, float]]:
+        """
+        Find the k most semantically similar nodes to the query.
+        Returns list of (node_id, similarity_score) tuples, sorted descending.
+        """
         if self.querying_matrix is None or len(self.querying_matrix) == 0:
             return []
         
-        query_embedding = self.querying_model.encode(question)
-        reshaped_query_embd = query_embedding.reshape(1, -1)
-
-        # Do cosine search and get top K most relevant nodes
-        cos_search = cosine_similarity(reshaped_query_embd, self.querying_matrix) # (1, n)
+        query_emb = self.querying_model.encode(query).reshape(1, -1)
+        sims= cosine_similarity(query_emb, self.querying_matrix)[0]
         
-        actual_k = min(k, len(self.embedding_ids))
-        top_k_indices = cos_search[0].argsort()[::-1][:actual_k]
-        return [self.embedding_ids[idx] for idx in top_k_indices]
+        actual_k = min(k, len(self.querying_ids))
+        top_k_indices = sims.argsort()[::-1][:actual_k]
+        return [(self.querying_ids[idx], float(sims[idx])) for idx in top_k_indices]
+
+
+    # ------------------------------------------------------------------
+    # Traversal
+    # ------------------------------------------------------------------
+
+    def traverse(
+        self,
+        start_node_id: str,
+        max_depth: int = 2,
+        direction: str = "both", # out, in, both
+        relation_filter: Optional[str] = None,
+        node_type_filter: Optional[str] = None,
+    ) -> tuple[set[str], list[Edge]]:
+        """
+        BFS traversal from a starting node.
+
+        Returns:
+            visited: set of all node IDs reached
+            path_edges: list of edges followed (in traversal order)
+        """
+        if start_node_id not in self.nodes:
+            return set(), []
+
+        visited = {start_node_id}
+        queue = deque([(start_node_id, 0)])
+        path_edges: list[Edge] = []
+
+        while queue:
+            current_id, depth = queue.popleft()
+            if depth >= max_depth:
+                continue
+
+            # Collect edges based on direction
+            edges_to_follow: list[Edge] = []
+            if direction in ("out", "both"):
+                edges_to_follow.extend(self.out_edges.get(current_id, []))
+            if direction in ("in", "both"):
+                edges_to_follow.extend(self.in_edges.get(current_id, []))
+
+            for edge in edges_to_follow:
+                # Determine neibhour
+                if edge.source_id == current_id:
+                    neighbor_id = edge.target_id
+                else:
+                    neighbor_id = edge.source_id
+
+                if relation_filter and edge.relation != relation_filter:
+                    continue
+                if node_type_filter:
+                    neighbor = self.nodes.get(neighbor_id)
+                    if neighbor and neighbor.node_type.upper() != node_type_filter.upper():
+                        continue
+
+                if neighbor_id not in visited:
+                    visited.add(neighbor_id)
+                    path_edges.append(edge)
+                    queue.append((neighbor_id, depth + 1))
+
+        return visited, path_edges
     
-    def query(
+    def multi_hop_query(
         self,
         question: str,
-        top_k: int = 5,
+        top_k: int = 3,
         max_depth: int = 2,
-        score_threshold: Optional[float] = None
+        direction: str = "both",
     ) -> list[str]:
         """
-        Embeds the question, cosine search,
-        fetches connected neighbours via BFS,
-        collects all source chunks from those nodes,
-        returns the chunks / passes to LLM with q
+        The main query interface.
+        1. Find entry nodes via embedding similarity
+        2. Traverse graph from each entry point
+        3. Collect all reachable nodes, edges, and source chunks
+        4. Return an EvidencePath
         """
-        top_node_ids = self._get_top_k_nodes(question, top_k)
+        entry_nodes_with_scores = self.get_top_k_nodes(question, k=top_k)
+        entry_node_ids = [nid for nid, _ in entry_nodes_with_scores]
 
-        visited = set(top_node_ids)
-        queue = deque((node_id, 0) for node_id in top_node_ids)
+        all_visited: set[str] = set()
+        all_edges: list[Edge] = []
+        all_chunk_ids: set[str] = set()
 
-        while queue:
-            node_id, curr_depth = queue.popleft()
+        for start_id in entry_node_ids:
+            visited, edges = self.traverse(
+                start_node_id=start_id,
+                max_depth=max_depth,
+                direction=direction,
+            )
+            all_visited.update(visited)
+            all_edges.extend(edges)
 
-            if curr_depth >= max_depth:
-                continue
+        # Collect source chuks from all visited nodes
+        for node_id in all_visited:
+            node = self.nodes.get(node_id)
+            if node:
+                all_chunk_ids.update(node.source_chunk_ids)
 
-            for edge in self.adj_list[node_id]:
-                neighbor_id = None
-                if edge.source_id == node_id:
-                    neighbor_id = edge.target_id
-                else:
-                    neighbor_id = edge.source_id
-                
-                if neighbor_id and neighbor_id not in visited:
-                    visited.add(neighbor_id)
-                    queue.append((neighbor_id, curr_depth + 1))
-                
-        source_chunk_ids = set()
+        # Deduplicate edges while preserving order
+        seen_edge_ids = set()
+        unique_edges = []
+        for e in all_edges:
+            if e.id not in seen_edge_ids:
+                seen_edge_ids.add(e.id)
+                unique_edges.append(e)
 
-        for node_id in visited:
-            source_chunk_ids.update(self.nodes[node_id].source_chunk_ids)
+        # Confidence = average similarity of entry nodes
+        avg_confidence = (
+            sum(score for _, score in entry_nodes_with_scores) / len(entry_nodes_with_scores) if entry_nodes_with_scores else 0.0
+        )
 
-        chunk_texts = [self.chunks_list[cid].text for cid in source_chunk_ids if cid in self.chunks_list]
-        
-        return chunk_texts
-    
-    def get_neighborhood(self, node_id: str, depth: int = 2) -> list[Node]:
-        visited = {node_id}
-        queue = deque((node_id, 0))
+        return EvidencePath(
+            question=question,
+            entry_nodes=entry_node_ids,
+            visited_nodes=list(all_visited),
+            traversed_edges=unique_edges,
+            source_chunks=list(all_chunk_ids),
+            confidence=round(avg_confidence, 4),
+        )
 
-        while queue:
-            n_id, curr_depth = queue.popleft()
-
-            if curr_depth >= depth:
-                continue
-
-            for edge in self.adj_list[node_id]:
-                neighbor_id = None
-                if edge.source_id == n_id:
-                    neighbor_id = edge.target_id
-                else:
-                    neighbor_id = edge.source_id
-                
-                if neighbor_id and neighbor_id not in visited:
-                    visited.add(neighbor_id)
-                    queue.append((neighbor_id, curr_depth + 1))
-        
-        return [self.nodes[n_id] for n_id in visited]
-
-    def traverse(self, question: str):
-        top_node_id = self._get_top_k_nodes(question, 1)
-
-        visited = set(top_node_id)
-        queue = deque((top_node_id, 0))
-
-        while queue:
-            node_id, curr_depth = queue.popleft()
-            desc_list = [] # [(node_id, description)]
-
-            for edge in self.adj_list[node_id]:
-                neighbour_id = None
-                
-                if edge.source_id == node_id:
-                    neighbour_id == edge.target_id
-
-                    desc_list.append((neighbour_id, self.nodes[neighbour_id].description))
-            
-            # take embeddings of description, query with them, and pick only one, add it to the queue
-            embeds = []
-            
-        
-        
-    def _get_total_edges_count(self) -> int:
-        total_entries = sum(len(edges) for edges in self.adj_list.values())
-        return total_entries // 2
-
-    def print_graph(self):
-        print("=" * 50)
-        print("KNOWLEDGE GRAPH")
-        print("=" * 50)
-        
-        print("\n--- NODES ---")
-        for node_id, node in self.nodes.items():
-            print(f"[{node_id[:8]}...] {node.name} ({node.node_type})")
-            print(f"  Source: {node.source_chunk_ids}")
-            print()
-        
-        print("\n" + "=" * 50)
-        print(f"Total nodes: {len(self.nodes)}")
-        print(f"Total edges: {self._get_total_edges_count()}")
-        print("=" * 50)
-
-
-
-
-
-from datetime import datetime, timezone
-from model2vec import StaticModel
-
-from graph import GraphStore, Node, Edge, Chunk, Document
-
-
-def main():
-    store = GraphStore("test_graph.db")
-
-    chunk = Chunk(
-        id="chunk1",
-        text="Python was created by Guido van Rossum.",
-        document_id="doc1",
-        index=0,
-    )
-
-    store.save_chunk(chunk)
-
-    loaded_chunk = store.get_chunk("chunk1")
-
-    print("Chunk")
-    print(loaded_chunk)
-    print()
-
-    node = Node(
-        node_type="Person",
-        aliases=["Guido van Rossum"],
-        description="Creator of Python",
-        source_chunk_ids=["chunk1"],
-    )
-
-    store.save_node(node)
-
-    nodes = store.load_nodes()
-
-    print("Nodes")
-    for n in nodes.values():
-        print(n)
-    print()
-
-    python = Node(
-        node_type="Language",
-        aliases=["Python"],
-        description="Programming language",
-        source_chunk_ids=["chunk1"],
-    )
-
-    store.save_node(python)
-
-    edge = Edge(
-        source_id=python.id,
-        target_id=node.id,
-        relation="created_by",
-        source_chunk_id="chunk1",
-    )
-
-    inserted = store.save_edge(edge)
-    print("Edge inserted:", inserted)
-
-    edges = store.load_edges()
-
-    print("\nEdges")
-    for e in edges:
-        print(e)
-    print()
-
-    doc = Document(
-        path="sample.txt",
-        name="sample.txt",
-        chunks=["chunk1"],
-        checksum="dummychecksum",
-        ingested_at=datetime.now(timezone.utc).isoformat(),
-    )
-
-    store.save_document(doc)
-
-    docs = store.load_documents()
-
-    print("Documents")
-    for d in docs.values():
-        print(d)
-    print()
-
-
-    print("Deleting node:", node.aliases[0])
-
-    store.delete_node(node.id)
-
-    print("\nRemaining Nodes")
-    for n in store.load_nodes().values():
-        print(n)
-
-    print("\nRemaining Edges")
-    print(store.load_edges())
-
-    store.close()
-
-
-if __name__ == "__main__":
-    main()

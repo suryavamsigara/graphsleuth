@@ -13,3 +13,4 @@ wheels/
 tests/
 file.txt
 test_graph.db
+test_graph.py
