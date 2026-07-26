@@ -12,3 +12,4 @@ wheels/
 .env
 tests/
 file.txt
+test_graph.db

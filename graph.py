@@ -4,45 +4,269 @@ later in sqlite, a junction table holds chunk ids and Node.
 """
 
 import uuid
+import json
 import hashlib
+import sqlite3
 import numpy as np
+from pathlib import Path
 from datetime import datetime, timezone
 from collections import deque, defaultdict
-from typing import Optional
+from typing import Optional, Iterator
 from dataclasses import dataclass, field
 from sklearn.metrics.pairwise import cosine_similarity
 from model2vec import StaticModel
 
-from models import Chunk
+
+@dataclass
+class Chunk:
+    """A text chunk extracted from a document."""
+    id: str
+    text: str
+    document_id: str
+    index: int = 0 # position within the document
 
 @dataclass
 class Node:
+    "A knowledge graph entity."
     node_type: str
     aliases: list[str]
     description: str
     source_chunk_ids: list[str] # many-to-many
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
     @property
     def name(self):
         return self.aliases[0] if self.aliases else "UNKNOWN"
 
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "node_type": self.node_type,
+            "aliases": json.dumps(self.aliases),
+            "description": self.description,
+            "source_chunk_ids": json.dumps(self.source_chunk_ids),
+            "created_at": self.created_at,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "Node":
+        return cls(
+            id=d["id"],
+            node_type=d["node_type"],
+            aliases=json.loads(d["aliases"]),
+            description=d["description"],
+            source_chunk_ids=json.loads(d["source_chunk_ids"]),
+            created_at=d["created_at"],
+        )
+
 
 @dataclass(unsafe_hash=True)
 class Edge:
+    """A directed relationship between two nodes."""
     source_id: str
     target_id: str
     relation: str
     source_chunk_id: str
+    id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "source_id": self.source_id,
+            "target_id": self.target_id,
+            "relation": self.relation,
+            "source_chunk_id": self.source_chunk_id,
+            "created_at": self.created_at,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "Edge":
+        return cls(
+            id=d["id"],
+            source_id=d["source_id"],
+            target_id=d["target_id"],
+            relation=d["relation"],
+            source_chunk_id=d["source_chunk_id"],
+            created_at=d["created_at"]
+        )
 
 @dataclass
 class Document:
+    """A source document that was ingested into the graph."""
     path: str
     name: str
     chunks: list[str] # List of chunk IDs
     checksum: str
     ingested_at: str
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "path": self.path,
+            "name": self.name,
+            "chunks": json.dumps(self.chunks),
+            "checksum": self.checksum,
+            "ingested_at": self.ingested_at,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "Document":
+        return cls(
+            id=d["id"],
+            path=d["path"],
+            name=d["name"],
+            chunks=json.loads(d["chunks"]),
+            checksum=d["checksum"],
+            ingested_at=d["ingested_at"],
+        )
+
+
+
+class GraphStore:
+    SCHEMA = """
+    CREATE TABLE IF NOT EXISTS nodes (
+        id TEXT PRIMARY KEY,
+        node_type TEXT NOT NULL,
+        aliases TEXT NOT NULL,          -- JSON array
+        description TEXT,
+        source_chunk_ids TEXT NOT NULL, -- JSON array
+        created_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS edges (
+            id TEXT PRIMARY KEY,
+            source_id TEXT NOT NULL,
+            target_id TEXT NOT NULL,
+            relation TEXT NOT NULL,
+            source_chunk_id TEXT NOT NULL,
+            created_at TEXT,
+            UNIQUE(source_id, target_id, relation, source_chunk_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS chunks (
+        id TEXT PRIMARY KEY,
+        text TEXT NOT NULL,
+        document_id TEXT NOT NULL,
+        idx INTEGER DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS documents (
+        id TEXT PRIMARY KEY,
+        path TEXT NOT NULL,
+        name TEXT NOT NULL,
+        chunks TEXT NOT NULL,           -- JSON array of chunk IDs
+        checksum TEXT UNIQUE NOT NULL,
+        ingested_at TEXT
+    );
+    
+
+    CREATE INDEX IF NOT EXISTS idx_edges_source ON edges(source_id);
+    CREATE INDEX IF NOT EXISTS idx_edges_target ON edges(target_id);
+    CREATE INDEX IF NOT EXISTS idx_edges_relation ON edges(relation);
+    CREATE INDEX IF NOT EXISTS idx_chunks_doc ON chunks(document_id);
+    """
+
+    def __init__(self, db_path: str = "graphsleuth.db"):
+        self.db_path = db_path
+        self._conn = sqlite3.connect(db_path, check_same_thread=False)
+        self._conn.row_factory = sqlite3.Row
+        self._init_schema()
+
+    def _init_schema(self):
+        self._conn.executescript(self.SCHEMA)
+        self._conn.commit()
+
+    def save_node(self, node: Node) -> None:
+        self._conn.execute(
+            """INSERT OR REPLACE INTO nodes
+            (id, node_type, aliases, description, source_chunk_ids, created_at)
+            VALUES (:id, :node_type, :aliases, :description, :source_chunk_ids, :created_at)""",
+            node.to_dict(),
+        )
+        self._conn.commit()
+
+    def load_nodes(self) -> dict[str, Node]:
+        rows = self._conn.execute("SELECT * FROM nodes").fetchall()
+        return {row["id"]: Node.from_dict(dict(row)) for row in rows}
+
+    def delete_node(self, node_id: str) -> bool:
+        self._conn.execute("DELETE FROM nodes WHERE id = ?", (node_id,))
+        self._conn.execute("DELETE FROM edges WHERE source_id = ? OR target_id = ?", (node_id, node_id))
+        self._conn.commit()
+
+    def save_edge(self, edge: Edge) -> bool:
+        """Returns True if inserted, False if duplicate."""
+        try:
+            self._conn.execute(
+                """INSERT INTO edges
+                (id, source_id, target_id, relation, source_chunk_id, created_at)
+                VALUES (:id, :source_id, :target_id, :relation, :source_chunk_id, :created_at)""",
+                edge.to_dict(),
+            )
+            self._conn.commit()
+            return True
+        except sqlite3.IntegrityError:
+            return False
+
+    def load_edges(self) -> list[Edge]:
+        rows = self._conn.execute("SELECT * FROM edges").fetchall()
+        return [Edge.from_dict(dict(row)) for row in rows]
+
+    def save_chunk(self, chunk: Chunk) -> None:
+        self._conn.execute(
+            """INSERT OR REPLACE INTO chunks (id, text, document_id, idx)
+            VALUES (?, ?, ?, ?)""",
+            (chunk.id, chunk.text, chunk.document_id, chunk.index),
+        )
+        self._conn.commit()
+
+    def load_chunk(self) -> dict[str, Chunk]:
+        rows = self._conn.execute("SELECT * FROM chunks").fetchall()
+        return {
+            row["id"]: Chunk(
+                id=row["id"],
+                text=row["text"],
+                document_id=row["document_id"],
+                index=row["idx"],
+            )
+            for row in rows
+        }
+
+    def get_chunk(self, chunk_id) -> Optional[Chunk]:
+        row = self._conn.execute(
+            "SELECT * FROM chunks WHERE id = ?", (chunk_id,)
+        ).fetchone()
+        if row is None:
+            return None
+        return Chunk(
+            id = row["id"],
+            text=row["text"],
+            document_id=row["document_id"],
+            index=row["idx"],
+        )
+
+
+    def save_document(self, doc: Document) -> None:
+        self._conn.execute(
+            """INSERT OR REPLACE INTO documents
+            (id, path, name, chunks, checksum, ingested_at)
+            VALUES (:id, :path, :name, :chunks, :checksum, :ingested_at)
+            """,
+            doc.to_dict()
+        )
+        self._conn.commit()
+
+    def load_documents(self) -> dict[str, Document]:
+        rows = self._conn.execute("SELECT * FROM DOCUMENTS").fetchall()
+        return {row["id"]: Document.from_dict(dict(row)) for row in rows}
+
+    def close(self):
+        self._conn.close()
+
+
 
 class KnowledgeGraph:
     def __init__(self, embedding_model: StaticModel, querying_model: StaticModel):
@@ -266,3 +490,107 @@ class KnowledgeGraph:
         print(f"Total edges: {self._get_total_edges_count()}")
         print("=" * 50)
 
+
+
+
+
+from datetime import datetime, timezone
+from model2vec import StaticModel
+
+from graph import GraphStore, Node, Edge, Chunk, Document
+
+
+def main():
+    store = GraphStore("test_graph.db")
+
+    chunk = Chunk(
+        id="chunk1",
+        text="Python was created by Guido van Rossum.",
+        document_id="doc1",
+        index=0,
+    )
+
+    store.save_chunk(chunk)
+
+    loaded_chunk = store.get_chunk("chunk1")
+
+    print("Chunk")
+    print(loaded_chunk)
+    print()
+
+    node = Node(
+        node_type="Person",
+        aliases=["Guido van Rossum"],
+        description="Creator of Python",
+        source_chunk_ids=["chunk1"],
+    )
+
+    store.save_node(node)
+
+    nodes = store.load_nodes()
+
+    print("Nodes")
+    for n in nodes.values():
+        print(n)
+    print()
+
+    python = Node(
+        node_type="Language",
+        aliases=["Python"],
+        description="Programming language",
+        source_chunk_ids=["chunk1"],
+    )
+
+    store.save_node(python)
+
+    edge = Edge(
+        source_id=python.id,
+        target_id=node.id,
+        relation="created_by",
+        source_chunk_id="chunk1",
+    )
+
+    inserted = store.save_edge(edge)
+    print("Edge inserted:", inserted)
+
+    edges = store.load_edges()
+
+    print("\nEdges")
+    for e in edges:
+        print(e)
+    print()
+
+    doc = Document(
+        path="sample.txt",
+        name="sample.txt",
+        chunks=["chunk1"],
+        checksum="dummychecksum",
+        ingested_at=datetime.now(timezone.utc).isoformat(),
+    )
+
+    store.save_document(doc)
+
+    docs = store.load_documents()
+
+    print("Documents")
+    for d in docs.values():
+        print(d)
+    print()
+
+
+    print("Deleting node:", node.aliases[0])
+
+    store.delete_node(node.id)
+
+    print("\nRemaining Nodes")
+    for n in store.load_nodes().values():
+        print(n)
+
+    print("\nRemaining Edges")
+    print(store.load_edges())
+
+    store.close()
+
+
+if __name__ == "__main__":
+    main()
