@@ -5,9 +5,11 @@ import time
 import numpy as np
 from typing import Optional, Literal
 from dataclasses import dataclass, field
-
 from pydantic import BaseModel, Field
+from sklearn.metrics.pairwise import cosine_similarity
+
 from client import get_ollama, get_openai
+from graph import Node, Edge
 
 class ExtractedEntity(BaseModel):
     """Single entity as returned by the LLM."""
@@ -27,16 +29,8 @@ class ExtractedRelation(BaseModel):
     """Single relation as returned by the LLM."""
     source: str = Field(description="Name of the source entity (must match an extracted entity name)")
     target: str = Field(description="Name of the target entity (must match an extracted entity name)")
-    relation: Literal[
-        "compared_to", 
-        "implements", 
-        "conceptually_similar_to", 
-        "matches_performance_of",
-        "introduced_in",
-        "uses",
-        "alternative_to"
-    ] = Field(
-        description="The exact structural predicate linking source and target entities."
+    relation: str = Field(
+        description="Short predicate. E.g. 'founded', 'acquired', 'caused', 'opposed', 'works_for'"
     )
 
 class ExtractionResult(BaseModel):
@@ -53,9 +47,10 @@ TASK: Read the text below and extract:
 
 RULES:
 - Use canonical names (e.g. "Tesla, Inc." not "the company").
-- Include 1-2 sentence descriptions grounded in the text.
+- Include 1-2 sentence descriptions grounded in the text. Descriptions should identify the entity itself.
+Do not repeat relationship facts that are already represented as relations.
 - Add aliases only if the text explicitly uses alternative names.
-- Relations must use simple, exact predicates matching the schema constraints: compared_to, hybridized_with, implements, conceptually_similar_to, uses, alternative_to.
+- Relations must use simple, exact predicates matching the schema
 - Only extract entities and relations that are EXPLICITLY stated or strongly implied by the text. Do not hallucinate.
 - If no entities or relations are present, return empty arrays.
 
@@ -92,6 +87,7 @@ class EntityExtractor:
         self,
         model_name: str = "qwen3.5:4b",
         embedding_model=None,
+        dedup_threshold: float = 0.92,
         temperature: float = 0.0,
         max_retries: int = 3,
         timeout: int = 120
@@ -99,14 +95,77 @@ class EntityExtractor:
         self.client = get_ollama()
         self.model_name = model_name
         self.embedding_model = embedding_model
+        self.dedup_threshold = dedup_threshold
         self.temperature = temperature
         self.max_retries = max_retries
         self.timeout = timeout
 
-    def extract(self, chunk_text: str, chunk_id: str):
+        self._node_embed_cache: dict[str, np.ndarray] = {}
+
+    def extract(
+        self,
+        chunk_text: str,
+        chunk_id: str,
+        existing_nodes: Optional[dict[str, Node]] = None,
+    ) -> tuple[list[Node], list[Edge]]:
         """Extracts nodes and edges from a single chunk."""
         raw_json = self._call_llm_with_retry(chunk_text)
-        return raw_json
+        parsed = ExtractionResult.model_validate(raw_json)
+
+        nodes: list[Node] = []
+        name_to_node_id: dict[str, str] = {}
+
+        for ent in parsed.entities:
+            canonical_name = ent.name.strip()
+            if not canonical_name:
+                continue
+
+            matched_node_id = self._find_duplicate(
+                canonical_name, ent.description, existing_nodes
+            )
+
+            if matched_node_id:
+                # Merge
+                name_to_node_id[canonical_name] = matched_node_id
+
+                for alias in ent.aliases:
+                    name_to_node_id[alias.strip()] = matched_node_id
+            else:
+                # Create
+                node = Node(
+                    node_type=ent.entity_type.upper(),
+                    aliases=[canonical_name] + [a.strip() for a in ent.aliases if a.strip()],
+                    description=ent.description.strip(),
+                    source_chunk_ids=[chunk_id],
+                )
+                nodes.append(node)
+                name_to_node_id[canonical_name] = node.id
+                for alias in ent.aliases:
+                    name_to_node_id[alias.strip()] = node.id
+
+        edges: list[Edge] = []
+        for rel in parsed.relations:
+            src_name = rel.source.strip()
+            tgt_name = rel.target.strip()
+
+
+            src_id = name_to_node_id.get(src_name)
+            tgt_id = name_to_node_id.get(tgt_name)
+
+            if src_id is None and existing_nodes:
+                src_id = self._fuzzy_name_match(src_name, existing_nodes)
+            if tgt_id is None and existing_nodes:
+                tgt_id = self._fuzzy_name_match(tgt_name, existing_nodes)
+
+            if src_id and tgt_id and src_id != tgt_id:
+                edge = Edge(
+                    source_id=src_id,
+                    target_id=tgt_id,
+                    relation=rel.relation.strip().lower().replace(" ", "_"),
+                    source_chunk_id=chunk_id,
+                )
+                edges.append(edge)
+        return nodes, edges
 
 
     def _call_llm_with_retry(self, chunk_text: str):
@@ -141,10 +200,6 @@ class EntityExtractor:
                             "num_thread": 4,
                             "numa": True,
                             "low_vram": True,
-                            "top_k": 40,
-                            "top_p": 0.9,
-                            "repeat_penalty": 1.1,
-                            "presence_penalty": 0.6
                         }
                     }
                 )
@@ -175,9 +230,96 @@ class EntityExtractor:
         except json.JSONDecodeError:
             pass
 
-if __name__=="__main__":
-    e = EntityExtractor()
-    text = """
-    Ilya Sutskever, a student of Hinton, has stated that "the Transformer is not the final architecture." In a 2024 interview, he suggested future systems might combine symbolic reasoning with pattern matching. Sutskever left OpenAI in 2025 to found Safe Superintelligence Inc., focusing on alignment before capability.
+    def _find_duplicate(
+        self,
+        name: str,
+        description: str,
+        existing_nodes: Optional[dict[str, Node]],
+    ) -> Optional[str]:
+        """
+        Checks if name already exists in the graph.
+        1. Exact alias match
+        2. Embedding cosine similarity
+        """
+        if not existing_nodes:
+            return None
+
+        name_lower = name.lower()
+        for node_id, node in existing_nodes.items():
+            for alias in node.aliases:
+                if alias.lower() == name_lower:
+                    return node_id
+
+        if self.embedding_model is None:
+            return None
+
+        candidate_text = f"{name} {description}".strip()
+        candidate_emb = self.embedding_model.encode(candidate_text).reshape(1, -1)
+
+        ids = []
+        embs = []
+        for node_id, node in existing_nodes.items():
+            if node_id in self._node_embed_cache:
+                emb = self._node_embed_cache[node_id]
+            else:
+                text = f"{node.name} {node.description}".strip()
+                emb = self.embedding_model.encode(text)
+                self._node_embed_cache[node_id] = emb
+            ids.append(node_id)
+            embs.append(emb)
+
+        if not embs:
+            return None
+
+        matrix = np.vstack(embs)
+        sims = cosine_similarity(candidate_emb, matrix)[0]
+        best_idx = int(np.argmax(sims))
+        best_score = float(sims[best_idx])
+
+        if best_score >= self.dedup_threshold:
+            return ids[best_idx]
+
+        return None
+
+    def _fuzzy_name_match(self, name: str, existing_nodes: dict[str, Node]) -> Optional[str]:
+        """Last-resort fuzzy match for relation endpoints that missed exact match."""
+        name_lower = name.lower()
+        best_id = None
+        best_score = 0.0
+
+        for node_id, node in existing_nodes.items():
+            for alias in node.aliases:
+                # Simple token overlap ratio
+                alias_tokens = set(alias.lower().split())
+                name_tokens = set(name_lower.split())
+                if not alias_tokens or not name_tokens:
+                    continue
+                overlap = len(alias_tokens & name_tokens) / max(len(alias_tokens), len(name_tokens))
+                if overlap > best_score and overlap >= 0.6:
+                    best_score = overlap
+                    best_id = node_id
+
+        return best_id
+
+
+
+
+if __name__ == "__main__":
+    # Quick smoke test — requires Ollama running locally
+    extractor = EntityExtractor(model_name="qwen3.5:4b")
+
+    sample_text = """
+    In 2022, Sam Altman and Greg Brockman founded OpenAI, which later released ChatGPT.
+    Microsoft invested $10 billion into OpenAI in January 2023.
+    Elon Musk, who co-founded OpenAI in 2015, left the board in 2018 and later criticized the company.
     """
-    print(e.extract(text, "12345"))
+
+    nodes, edges = extractor.extract(sample_text, chunk_id="chunk-001")
+
+    print(f"Extracted {len(nodes)} nodes, {len(edges)} edges")
+    print("\n--- NODES ---")
+    for n in nodes:
+        print(f"  {n.name} ({n.node_type}) — {n.description[:60]}...")
+    print("\n--- EDGES ---")
+    for e in edges:
+        print(f"  {e.source_id[:8]}... --[{e.relation}]--> {e.target_id[:8]}...")
