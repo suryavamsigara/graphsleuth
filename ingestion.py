@@ -1,3 +1,10 @@
+"""
+Document ingestion pipeline for GraphSleuth
+
+Orchestrates the full flow:
+  Raw File -> Text Extraction -> Chunking -> Entity Extraction -> Graph Population
+"""
+
 import os
 import uuid
 from pathlib import Path
@@ -207,3 +214,26 @@ class IngestionPipeline:
                 "nodes_created": 0,
                 "edges_created": 0
             }
+
+    def ingest_directory(self, dir_path: str, recursive: bool = True) -> list[dict]:
+        """
+        Ingest all supported files in a directory.
+        Returns list of per-file results.
+        """
+        path = Path(dir_path)
+        pattern = "**/*" if recursive else "*"
+        supported = {".txt", ".md", ".py",".pdf"}
+
+        files = [f for f in path.glob(pattern) if f.is_file() and f.suffix.lower() in supported]
+        results = []
+        for f in files:
+            result = self.ingest_file(str(f), f.name)
+            results.append(result)
+            print(f"  [{"OK" if result["success"] else "FAIL"}] {f.name}: "
+                    f"{result["chunks_processed"]} chunks, "
+                    f"{result["nodes_created"]} nodes, "
+                    f"{result["edges_created"]} edges")
+        return results
+
+    def get_stats(self) -> dict:
+        return self.kg.get_metrics()

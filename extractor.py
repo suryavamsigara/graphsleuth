@@ -1,10 +1,16 @@
+"""
+Entity & Relation extraction pipeline for GraphSleuth
+
+Takes raw text chunks, calls a local LLM (Ollama), and returns structured
+Node and Edge objects ready for ingestion into KnowledgeGraph.
+"""
+
 import json
 import re
 import httpx
 import time
 import numpy as np
-from typing import Optional, Literal
-from dataclasses import dataclass, field
+from typing import Optional
 from pydantic import BaseModel, Field
 from sklearn.metrics.pairwise import cosine_similarity
 

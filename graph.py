@@ -1,9 +1,19 @@
+"""
+Knowledge Graph Core + Persistence + Evidence Tracking
+
+It handles:
+  - Node/Edge/Document/Chunk data structures
+  - In-memory graph operations (BFS, traversal, metrics)
+  - SQLite persistence (auto-save on every mutation)
+  - Embedding-based node retrieval
+  - Evidence tracking (provenance for every answer)
+"""
+
 import uuid
 import json
 import hashlib
 import sqlite3
 import numpy as np
-from pathlib import Path
 from datetime import datetime, timezone
 from collections import deque, defaultdict
 from typing import Optional
