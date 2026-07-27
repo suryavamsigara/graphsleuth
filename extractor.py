@@ -87,7 +87,7 @@ class EntityExtractor:
         self,
         model_name: str = "qwen3.5:4b",
         embedding_model=None,
-        dedup_threshold: float = 0.92,
+        dedup_threshold: float = 0.85,
         temperature: float = 0.0,
         max_retries: int = 3,
         timeout: int = 120
@@ -109,8 +109,10 @@ class EntityExtractor:
         existing_nodes: Optional[dict[str, Node]] = None,
     ) -> tuple[list[Node], list[Edge]]:
         """Extracts nodes and edges from a single chunk."""
+        print("Extracting...")
         raw_json = self._call_llm_with_retry(chunk_text)
         parsed = ExtractionResult.model_validate(raw_json)
+        print("Extracted!")
 
         nodes: list[Node] = []
         name_to_node_id: dict[str, str] = {}
@@ -239,17 +241,39 @@ class EntityExtractor:
         """
         Checks if name already exists in the graph.
         1. Exact alias match
-        2. Embedding cosine similarity
+        2. Partial/Substring name match
+        3. Embedding cosine similarity
         """
         if not existing_nodes:
             return None
 
         name_lower = name.lower()
+        name_tokens = set(name_lower.split())
+        
+        # Step 1: Exact alias match
         for node_id, node in existing_nodes.items():
             for alias in node.aliases:
                 if alias.lower() == name_lower:
                     return node_id
-
+        
+        # Step 2: Partial/substring match
+        # Check if the name is a substring of any existing alias, or vice versa
+        for node_id, node in existing_nodes.items():
+            for alias in node.aliases:
+                alias_lower = alias.lower()
+                alias_tokens = set(alias_lower.split())
+                
+                # Check if one is a substring of the other
+                if name_lower in alias_lower or alias_lower in name_lower:
+                    # Additional safeguard: check token overlap for multi-word names
+                    if not name_tokens or not alias_tokens:
+                        return node_id
+                    # At least 50% token overlap
+                    overlap = len(name_tokens & alias_tokens) / min(len(name_tokens), len(alias_tokens))
+                    if overlap >= 0.5:
+                        return node_id
+        
+        # Step 3: Embedding similarity
         if self.embedding_model is None:
             return None
 
@@ -301,25 +325,3 @@ class EntityExtractor:
 
         return best_id
 
-
-
-
-if __name__ == "__main__":
-    # Quick smoke test — requires Ollama running locally
-    extractor = EntityExtractor(model_name="qwen3.5:4b")
-
-    sample_text = """
-    In 2022, Sam Altman and Greg Brockman founded OpenAI, which later released ChatGPT.
-    Microsoft invested $10 billion into OpenAI in January 2023.
-    Elon Musk, who co-founded OpenAI in 2015, left the board in 2018 and later criticized the company.
-    """
-
-    nodes, edges = extractor.extract(sample_text, chunk_id="chunk-001")
-
-    print(f"Extracted {len(nodes)} nodes, {len(edges)} edges")
-    print("\n--- NODES ---")
-    for n in nodes:
-        print(f"  {n.name} ({n.node_type}) — {n.description[:60]}...")
-    print("\n--- EDGES ---")
-    for e in edges:
-        print(f"  {e.source_id[:8]}... --[{e.relation}]--> {e.target_id[:8]}...")

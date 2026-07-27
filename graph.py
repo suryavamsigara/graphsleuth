@@ -702,7 +702,7 @@ class KnowledgeGraph:
         top_k: int = 3,
         max_depth: int = 2,
         direction: str = "both",
-    ) -> list[str]:
+    ) -> EvidencePath:
         """
         The main query interface.
         1. Find entry nodes via embedding similarity

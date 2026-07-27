@@ -1,6 +1,7 @@
 import os
 import uuid
 from pathlib import Path
+from typing import Callable
 
 from graph import KnowledgeGraph, Node, Edge, Chunk, Document
 from extractor import EntityExtractor
@@ -38,7 +39,7 @@ def extract_text_from_file(file_path: str) -> str:
     raise ValueError(f"Unsupported file type: {suffix}. Supported: {text_extensions}")
 
 
-def chunk_by_paragraphs(text: str, max_chars: int = 1500, overlap: int = 200) -> list[str]:
+def chunk_by_paragraphs(text: str, max_chars: int = 500, overlap: int = 50) -> list[str]:
     """
     Splits text into paragraphs.
     """
@@ -87,23 +88,122 @@ def split_into_sentences(text: str) -> list[str]:
     return [s.strip() for s in sentences if s.strip()]
 
 
+# --------------------------------------------------------------
+# Main ingestion orchestrator
+# --------------------------------------------------------------
 
+class IngestionPipeline:
+    def __init__(
+        self,
+        kg: KnowledgeGraph,
+        extractor: EntityExtractor,
+        chunker: Callable[[str], list[str]] | None = None,
+    ):
+        self.kg = kg
+        self.extractor = extractor
+        self.chunker = chunker or chunk_by_paragraphs
 
-if __name__=="__main__":
-    test_text = """
-    In 2015, Sam Altman and Elon Musk founded OpenAI as a non-profit.
-    In 2019, Sam Altman became CEO of OpenAI.
-    In 2022, OpenAI released ChatGPT, which became the fastest-growing consumer app.
-    Microsoft invested $10 billion into OpenAI in January 2023.
-    Elon Musk left the OpenAI board in 2018 and later founded xAI in 2023.
-    """
-    import tempfile
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
-        f.write(test_text)
-        temp_path = f.name
+    def ingest_file(self, file_path: str, file_name: str | None = None) -> dict:
+        """
+        Ingests a single file into the knowledge graph.
+        """
+        file_name = file_name or os.path.basename(file_path)
+        try:
+            # 1. Extract text
+            raw_text = extract_text_from_file(file_path)
+            if not raw_text.strip():
+                return {
+                    "success": False,
+                    "error": "Empty file",
+                    "document_id": None,
+                    "chunks_processed": 0,
+                    "nodes_created": 0,
+                    "edges_created": 0
+                }
 
-    ext = extract_text_from_file(temp_path)
-    print(ext)
-    chunks = chunk_by_paragraphs(ext)
-    print("="*50)
-    print(chunks)
+            # 2. Chunk
+            chunk_texts = self.chunker(raw_text)
+            if not chunk_texts:
+                return {
+                    "success": False,
+                    "error": "No chunks generated",
+                    "document_id": None,
+                    "chunks_processed": 0,
+                    "nodes_created": 0,
+                    "edges_created": 0,
+                }
+
+            # 3. Register document
+            chunk_ids = [str(uuid.uuid4()) for _ in chunk_texts]
+            doc_id = self.kg.register_document(file_path, file_name, chunk_ids)
+            if doc_id is None:
+                return {
+                    "success": True,
+                    "error": "Duplicate document skipped",
+                    "document_id": None,
+                    "chunks_processed": 0,
+                    "nodes_created": 0,
+                    "edges_created": 0,
+                }
+
+            # 4. Process each chunk
+            total_nodes = 0
+            total_edges = 0
+
+            for i, (chunk_text, chunk_id) in enumerate(zip(chunk_texts, chunk_ids)):
+                # Store chunk
+                chunk = Chunk(
+                    id=chunk_id,
+                    text=chunk_text,
+                    document_id=doc_id,
+                    index=i
+                )
+                self.kg.add_chunk(chunk)
+
+                # Extract entities and relations
+                new_nodes, new_edges = self.extractor.extract(
+                    chunk_text=chunk_text,
+                    chunk_id=chunk_id,
+                    existing_nodes=self.kg.nodes,
+                )
+
+                print(20*"=")
+                print("New Nodes: \n", new_nodes)
+                print("New edges: \n", new_edges)
+                print(20*"=")
+
+                # Merge deduplicated nodes
+                for node in new_nodes:
+                    if node.id in self.kg.nodes:
+                        self.kg.update_node_chunks(node.id, chunk_id)
+                    else:
+                        # New node
+                        self.kg.add_node(node)
+                        total_nodes += 1
+
+                # Add edges
+                for edge in new_edges:
+                    try:
+                        if self.kg.create_edge(edge):
+                            total_edges += 1
+                    except ValueError as e:
+                        print(f"Skipping invalid edge: {e}")
+                        continue
+
+            return {
+                "success": True,
+                "document_id": doc_id,
+                "chunks_processed": len(chunk_texts),
+                "nodes_created": total_nodes,
+                "edges_created": total_edges,
+                "error": None,
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e),
+                "document_id": None,
+                "chunks_processed": 0,
+                "nodes_created": 0,
+                "edges_created": 0
+            }
