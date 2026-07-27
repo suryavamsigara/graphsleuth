@@ -1,9 +1,20 @@
+"""
+Agent for GraphSleuth
+
+ReAct style agent that answers questions by traversing the knowledge graph, reading source chunks, and synthesizing cited answers.
+Returns both the answer and a complete EvidencePath for visualization.
+"""
+
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 from graph import KnowledgeGraph, EvidencePath
 from client import get_ollama, get_openai
 
+
+# -------------------------------------------------
+# Agent result type
+# -------------------------------------------------
 
 @dataclass
 class AgentAnswer:
@@ -39,7 +50,20 @@ Be concise but thorough. Prioritize factual accuracy over completeness."""
 
 class InvestigatorAgent:
     """
-    ReAct style agent for graph based question answering
+    ReAct style agent for graph based question answering.
+    
+    Flow:
+        1. Search graph for entry points (embedding similarity)
+        2. Traverse graph to collect evidence (BFS)
+        3. Read source chunks
+        4. Synthesize answer with citations
+        5. Return AgentAnswer with full EvidencePath
+
+    Args:
+        kg: KnowledgeGraph (populated already)
+        max_evidence_chunks: Max chunks to feed to LLM
+        max_depth: Default BFS depth for graph traversal
+        top_k: Default number of entry nodes
     """
     def __init__(
         self,
@@ -69,6 +93,7 @@ class InvestigatorAgent:
 
         steps = []
 
+        # Step 1: Find entry points
         step1_start = time.time()
         entry_nodes = self.kg.get_top_k_nodes(query=question, k=self.top_k)
         steps.append({
