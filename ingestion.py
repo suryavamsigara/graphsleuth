@@ -118,6 +118,7 @@ class IngestionPipeline:
         try:
             # 1. Extract text
             raw_text = extract_text_from_file(file_path)
+            print("RAW TEXT:\n\n", raw_text)
             if not raw_text.strip():
                 return {
                     "success": False,

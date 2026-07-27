@@ -92,13 +92,15 @@ class EntityExtractor:
     def __init__(
         self,
         model_name: str = "qwen3.5:4b",
+        use_local: bool = True,
         embedding_model=None,
         dedup_threshold: float = 0.85,
         temperature: float = 0.0,
         max_retries: int = 3,
         timeout: int = 120
     ):
-        self.client = get_ollama()
+        self.use_local = use_local
+        self.client = get_ollama() if self.use_local else get_openai()
         self.model_name = model_name
         self.embedding_model = embedding_model
         self.dedup_threshold = dedup_threshold
@@ -185,33 +187,38 @@ class EntityExtractor:
         {"role": "user", "content": prompt}
     ]
 
-        last_error: Optional[Exception] = None
+        last_error: Exception | None = None
 
         for attempt in range(1, self.max_retries + 1):
             try:
-                response = self.client.chat.completions.create(
-                    model=self.model_name,
-                    messages=messages,
-                    stream=False,
-                    temperature=self.temperature,
-                    max_completion_tokens=4096,
-                    timeout=httpx.Timeout(self.timeout),
-                    reasoning_effort="none",
-                    extra_body={
+                kwargs = {
+                    "model": self.model_name,
+                    "messages": messages,
+                    "stream": False,
+                    "temperature": self.temperature,
+                    "timeout": httpx.Timeout(self.timeout),
+                }
+
+                if not self.use_local:
+                    kwargs["max_tokens"] = 4096
+                    kwargs["response_format"] = {"type": "json_object"}
+                else:
+                    kwargs["max_completion_tokens"] = 2048
+                    kwargs["extra_body"] = {
                         "response_format": {
                             "type": "json_object",
                             "schema": ExtractionResult.model_json_schema()
                         },
                         "options": {
-                            "num_ctx": 4096,
+                            "num_ctx": 8192,
                             "temperature": 0.0,
                             "num_thread": 4,
                             "numa": True,
                             "low_vram": True,
                         }
                     }
-                )
 
+                response = self.client.chat.completions.create(**kwargs)
                 response_text = response.choices[0].message.content
                 print(response_text)
                 return self._extract_json(response_text)

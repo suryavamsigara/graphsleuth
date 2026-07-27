@@ -328,11 +328,11 @@ if __name__ == "__main__":
         "MinishLab/potion-retrieval-32M"
     )
 
-    kg = KnowledgeGraph(embedding_model=embed, querying_model=query, db_path="test_graph.db")
+    kg = KnowledgeGraph(embedding_model=embed, querying_model=query, db_path="db/test_graph_openai.db")
 
     from extractor import EntityExtractor
 
-    extractor = EntityExtractor(model_name="qwen3.5:4b", embedding_model=embed)
+    extractor = EntityExtractor(model_name="deepseek-v4-flash", use_local=False, embedding_model=embed)
     pipeline = IngestionPipeline(kg=kg, extractor=extractor)
 
 

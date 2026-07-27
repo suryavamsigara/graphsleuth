@@ -15,3 +15,4 @@ file.txt
 test_graph.db
 test_graph.py
 graph_exports/
+db/
