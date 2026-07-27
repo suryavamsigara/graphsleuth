@@ -14,6 +14,7 @@ import json
 import hashlib
 import sqlite3
 import numpy as np
+from pathlib import Path
 from datetime import datetime, timezone
 from collections import deque, defaultdict
 from typing import Optional
@@ -798,6 +799,104 @@ class KnowledgeGraph:
         """Persist an evidence path and return its ID."""
         return self.store.save_evidence(evidence)
 
-    def get_pas_evidence(self, question: str) -> list[EvidencePath]:
+    def get_past_evidence(self, question: str) -> list[EvidencePath]:
         """Retrieves previously saved evidence paths for a question"""
         return self.store.load_evidence_for_question(question)
+
+    def export_to_json(self, output_dir: str = "graph_exports") -> str:
+        """Exoprt the entire knowledge graph to json files."""
+        output_path = Path(output_dir)
+        output_path.mkdir(exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        # Export nodes
+        nodes_data = []
+        for node_id, node in self.nodes.items():
+            nodes_data.append({
+                "id": node.id,
+                "name": node.name,
+                "node_type": node.node_type,
+                "aliases": node.aliases,
+                "description": node.description,
+                "source_chunk_ids": node.source_chunk_ids,
+                "created_at": node.created_at
+            })
+
+        # Export edges
+        edges_data = []
+        for edge_list in self.out_edges.values():
+            for edge in edge_list:
+                # Get node names for readability
+                source_name = self.nodes.get(edge.source_id, Node(node_type="UNKNOWN", aliases=["UNKNOWN"], description="", source_chunk_ids=[])).name
+                target_name = self.nodes.get(edge.target_id, Node(node_type="UNKNOWN", aliases=["UNKNOWN"], description="", source_chunk_ids=[])).name
+
+                edges_data.append({
+                    "id": edge.id,
+                    "source_id": edge.source_id,
+                    "source_name": source_name,
+                    "target_id": edge.target_id,
+                    "target_name": target_name,
+                    "relation": edge.relation,
+                    "source_chunk_id": edge.source_chunk_id,
+                    "created_at": edge.created_at
+                })
+
+        # Export chunks
+        chunks_data = []
+        for chunk_id, chunk in self.chunks.items():
+            chunks_data.append({
+                "id": chunk.id,
+                "text": chunk.text[:500] + "..." if len(chunk.text) > 500 else chunk.text,
+                "full_text": chunk.text,
+                "document_id": chunk.document_id,
+                "index": chunk.index
+            })
+
+        # Export documents
+        documents_data = []
+        for doc_id, doc in self.documents.items():
+            documents_data.append({
+                "id": doc.id,
+                "path": doc.path,
+                "name": doc.name,
+                "chunks": doc.chunks,
+                "checksum": doc.checksum,
+                "ingested_at": doc.ingested_at
+            })
+
+        # Combine everything
+        graph_data = {
+            "export_timestamp": timestamp,
+            "metrics": self.get_metrics(),
+            "nodes": nodes_data,
+            "edges": edges_data,
+            "chunks": chunks_data,
+            "documents": documents_data
+        }
+
+
+        # Save main graph file
+        graph_file = output_path / f"graph_export_{timestamp}.json"
+        with open(graph_file, "w", encoding="utf-8") as f:
+            json.dump(graph_data, f, indent=2, ensure_ascii=False)
+
+        # Save separate file for each component
+        with open(output_path / f"nodes_{timestamp}.json", "w", encoding="utf-8") as f:
+            json.dump(nodes_data, f, indent=2, ensure_ascii=False)
+
+        with open(output_path / f"edges_{timestamp}.json", "w", encoding="utf-8") as f:
+            json.dump(edges_data, f, indent=2, ensure_ascii=False)
+
+        print(f"Graph exported to: {graph_file}")
+        print(f"  - {len(nodes_data)} nodes")
+        print(f"  - {len(edges_data)} edges")
+        print(f"  - {len(chunks_data)} chunks")
+        print(f"  - {len(documents_data)} documents")
+        
+        return {
+            "graph_file": str(graph_file),
+            "nodes_file": str(output_path / f"nodes_{timestamp}.json"),
+            "edges_file": str(output_path / f"edges_{timestamp}.json"),
+            "node_count": len(nodes_data),
+            "edge_count": len(edges_data)
+        }

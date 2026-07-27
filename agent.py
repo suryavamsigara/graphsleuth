@@ -326,7 +326,7 @@ if __name__ == "__main__":
     print("QUESTION: Who were the key founders of OpenAI and what were their backgrounds before joining the organization?")
     print("="*60)
 
-    answer = agent.investigate("Who were the key founders of OpenAI and what were their backgrounds before joining the organization?")
+    answer = agent.investigate("Which companies are competing in cloud AI?")
     print(f"\nAnswer:\n{answer.answer}")
     print(f"\nEvidence: {len(answer.evidence.visited_nodes)} nodes, {len(answer.evidence.traversed_edges)} edges")
     print(f"Confidence: {answer.evidence.confidence}")
