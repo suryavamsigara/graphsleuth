@@ -9,7 +9,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from sklearn.metrics.pairwise import cosine_similarity
 
-from graph import KnowledgeGraph, EvidencePath
+from engine.models.document import EvidencePath
+from engine.graph.knowledge_graph import KnowledgeGraph
 from client import get_ollama, get_openai
 
 
@@ -342,57 +343,57 @@ class InvestigatorAgent:
         return "\n".join(lines)
 
 
-if __name__ == "__main__":
-    from model2vec import StaticModel
-    from graph import KnowledgeGraph
-    from ingestion import IngestionPipeline
+# if __name__ == "__main__":
+#     from model2vec import StaticModel
+#     from graph import KnowledgeGraph
+#     from ingestion import IngestionPipeline
 
-    # Setup
-    embed = StaticModel.from_pretrained(
-        "MinishLab/potion-retrieval-32M",
-        dimensionality=128,
-    )
+#     # Setup
+#     embed = StaticModel.from_pretrained(
+#         "MinishLab/potion-retrieval-32M",
+#         dimensionality=128,
+#     )
 
-    query = StaticModel.from_pretrained(
-        "MinishLab/potion-retrieval-32M"
-    )
+#     query = StaticModel.from_pretrained(
+#         "MinishLab/potion-retrieval-32M"
+#     )
 
-    kg = KnowledgeGraph(embedding_model=embed, querying_model=query, db_path="db/test_graph_openai4.db")
+#     kg = KnowledgeGraph(embedding_model=embed, querying_model=query, db_path="db/test_graph_openai4.db")
 
-    from extractor import EntityExtractor
+#     from extractor import EntityExtractor
 
-    extractor = EntityExtractor(model_name="deepseek-v4-flash", use_local=False, embedding_model=embed)
-    pipeline = IngestionPipeline(kg=kg, extractor=extractor)
+#     extractor = EntityExtractor(model_name="deepseek-v4-flash", use_local=False, embedding_model=embed)
+#     pipeline = IngestionPipeline(kg=kg, extractor=extractor)
 
 
-    result = pipeline.ingest_file("file.txt", "file")
-    print(f"Ingested: {result['chunks_processed']} chunks, {result['nodes_created']} nodes, {result['edges_created']} edges")
+#     result = pipeline.ingest_file("file.txt", "file")
+#     print(f"Ingested: {result['chunks_processed']} chunks, {result['nodes_created']} nodes, {result['edges_created']} edges")
 
-    # Test agent
-    agent = InvestigatorAgent(
-        kg=kg,
-        model_name="deepseek-v4-flash",
-        use_openai=True,
-        max_evidence_chunks=12,
-        top_k=5,
-        min_entry_score=0.30,
-        guided_traversal_min_score=0.20,
-        beam_width=5,
-    )
+#     # Test agent
+#     agent = InvestigatorAgent(
+#         kg=kg,
+#         model_name="deepseek-v4-flash",
+#         use_openai=True,
+#         max_evidence_chunks=12,
+#         top_k=5,
+#         min_entry_score=0.30,
+#         guided_traversal_min_score=0.20,
+#         beam_width=5,
+#     )
 
-    print("\n" + "="*60)
-    print("QUESTION: Which employee previously worked at OpenAI?")
-    print("="*60)
+#     print("\n" + "="*60)
+#     print("QUESTION: Which employee previously worked at OpenAI?")
+#     print("="*60)
 
-    answer = agent.investigate("Which employee previously worked at OpenAI?")
-    print(f"\nAnswer:\n{answer.answer}")
-    print(f"\nEvidence: {len(answer.evidence.visited_nodes)} nodes, {len(answer.evidence.traversed_edges)} edges")
-    print(f"Confidence: {answer.evidence.confidence}")
-    print(f"Latency: {answer.latency_ms}ms")
+#     answer = agent.investigate("Which employee previously worked at OpenAI?")
+#     print(f"\nAnswer:\n{answer.answer}")
+#     print(f"\nEvidence: {len(answer.evidence.visited_nodes)} nodes, {len(answer.evidence.traversed_edges)} edges")
+#     print(f"Confidence: {answer.evidence.confidence}")
+#     print(f"Latency: {answer.latency_ms}ms")
 
-    print("\n--- Reasoning Steps ---")
-    for step in answer.reasoning_steps:
-        print(f"  Step {step['step']}: {step['action']} ({step['latency_ms']}ms)")
+#     print("\n--- Reasoning Steps ---")
+#     for step in answer.reasoning_steps:
+#         print(f"  Step {step['step']}: {step['action']} ({step['latency_ms']}ms)")
 
-    print("\n--- Path Explanation ---")
-    print(agent.explain_path(answer.evidence))
+#     print("\n--- Path Explanation ---")
+#     print(agent.explain_path(answer.evidence))

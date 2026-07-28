@@ -15,7 +15,8 @@ from pydantic import BaseModel, Field
 from sklearn.metrics.pairwise import cosine_similarity
 
 from client import get_ollama, get_openai
-from graph import Node, Edge
+from engine.models.node import Node
+from engine.models.edge import Edge
 
 class ExtractedEntity(BaseModel):
     """Single entity as returned by the LLM."""

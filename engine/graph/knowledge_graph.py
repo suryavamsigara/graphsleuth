@@ -2,263 +2,26 @@
 Knowledge Graph Core + Persistence + Evidence Tracking
 
 It handles:
-  - Node/Edge/Document/Chunk data structures
-  - In-memory graph operations (BFS, traversal, metrics)
+  - In-memory graph operations (BFS traversal, beam search, metrics)
   - SQLite persistence (auto-save on every mutation)
   - Embedding-based node retrieval
   - Evidence tracking (provenance for every answer)
 """
 
-import os
-import uuid
+
 import json
 import hashlib
-import sqlite3
 import numpy as np
 from pathlib import Path
 from datetime import datetime, timezone
-from collections import deque, defaultdict
-from typing import Optional
-from dataclasses import dataclass, field
 from sklearn.metrics.pairwise import cosine_similarity
 from model2vec import StaticModel
+from collections import deque, defaultdict
 
+from engine.ports.graph_store import GraphStore
 from engine.models.node import Node
 from engine.models.edge import Edge
 from engine.models.document import Chunk, Document, EvidencePath
-
-
-# ---------------------------------------------------------------------------
-# SQLite persistence layer
-# ---------------------------------------------------------------------------
-
-class GraphStore:
-    SCHEMA = """
-    CREATE TABLE IF NOT EXISTS nodes (
-        id TEXT PRIMARY KEY,
-        node_type TEXT NOT NULL,
-        aliases TEXT NOT NULL,          -- JSON array
-        description TEXT,
-        source_chunk_ids TEXT NOT NULL, -- JSON array
-        created_at TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS edges (
-            id TEXT PRIMARY KEY,
-            source_id TEXT NOT NULL,
-            target_id TEXT NOT NULL,
-            relation TEXT NOT NULL,
-            source_chunk_id TEXT NOT NULL,
-            created_at TEXT,
-            UNIQUE(source_id, target_id, relation, source_chunk_id)
-    );
-
-    CREATE TABLE IF NOT EXISTS chunks (
-        id TEXT PRIMARY KEY,
-        text TEXT NOT NULL,
-        document_id TEXT NOT NULL,
-        idx INTEGER DEFAULT 0
-    );
-
-    CREATE TABLE IF NOT EXISTS documents (
-        id TEXT PRIMARY KEY,
-        path TEXT NOT NULL,
-        name TEXT NOT NULL,
-        chunks TEXT NOT NULL,           -- JSON array of chunk IDs
-        checksum TEXT UNIQUE NOT NULL,
-        ingested_at TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS evidence_paths (
-        id TEXT PRIMARY KEY,
-        question TEXT NOT NULL,
-        entry_nodes TEXT,               -- JSON array
-        visited_nodes TEXT,             -- JSON array
-        traversed_edges TEXT,           -- JSON array of edge dicts
-        source_chunks TEXT,             -- JSON array
-        answer TEXT,
-        confidence REAL,
-        created_at TEXT
-    );
-    
-
-    CREATE INDEX IF NOT EXISTS idx_edges_source ON edges(source_id);
-    CREATE INDEX IF NOT EXISTS idx_edges_target ON edges(target_id);
-    CREATE INDEX IF NOT EXISTS idx_edges_relation ON edges(relation);
-    CREATE INDEX IF NOT EXISTS idx_chunks_doc ON chunks(document_id);
-    CREATE INDEX IF NOT EXISTS idx_evidence_question ON evidence_paths(question);
-    """
-
-    def __init__(self, db_path: str = "graphsleuth.db"):
-        db_dir = os.path.dirname(db_path)
-
-        if db_dir:
-            os.makedirs(db_dir, exist_ok=True)
-        self._conn = sqlite3.connect(db_path, check_same_thread=False)
-        self._conn.row_factory = sqlite3.Row
-        self._init_schema()
-
-    def _init_schema(self):
-        self._conn.executescript(self.SCHEMA)
-        self._conn.commit()
-
-    # -- Nodes --
-
-    def save_node(self, node: Node) -> None:
-        self._conn.execute(
-            """INSERT OR REPLACE INTO nodes
-            (id, node_type, aliases, description, source_chunk_ids, created_at)
-            VALUES (:id, :node_type, :aliases, :description, :source_chunk_ids, :created_at)""",
-            node.to_dict(),
-        )
-        self._conn.commit()
-
-    def load_nodes(self) -> dict[str, Node]:
-        rows = self._conn.execute("SELECT * FROM nodes").fetchall()
-        return {row["id"]: Node.from_dict(dict(row)) for row in rows}
-
-    def delete_node(self, node_id: str) -> bool:
-        self._conn.execute("DELETE FROM nodes WHERE id = ?", (node_id,))
-        self._conn.execute("DELETE FROM edges WHERE source_id = ? OR target_id = ?", (node_id, node_id))
-        self._conn.commit()
-
-    # -- Edges --
-
-    def save_edge(self, edge: Edge) -> bool:
-        """Returns True if inserted, False if duplicate."""
-        try:
-            self._conn.execute(
-                """INSERT INTO edges
-                (id, source_id, target_id, relation, source_chunk_id, created_at)
-                VALUES (:id, :source_id, :target_id, :relation, :source_chunk_id, :created_at)""",
-                edge.to_dict(),
-            )
-            self._conn.commit()
-            return True
-        except sqlite3.IntegrityError:
-            return False
-
-    def load_edges(self) -> list[Edge]:
-        rows = self._conn.execute("SELECT * FROM edges").fetchall()
-        return [Edge.from_dict(dict(row)) for row in rows]
-
-    def get_edges_from(self, node_id: str) -> list[Edge]:
-        rows = self._conn.execute(
-            "SELECT * FROM edges WHERE source_id = ?", (node_id,)
-        ).fetchall()
-        return [Edge.from_dict(dict(row)) for row in rows]
-
-    def get_edges_to(self, node_id: str) -> list[Edge]:
-        rows = self._conn.execute(
-            "SELECT * FROM edges WHERE target_id = ?", (node_id,)
-        ).fetchall()
-        return [Edge.from_dict(dict(row)) for row in rows]
-
-    def get_edges_between(self, source_id: str, target_id: str) -> list[Edge]:
-        rows = self._conn.execute(
-            "SELECT * FROM edges WHERE source_id = ? AND target_id = ?",
-            (source_id, target_id),
-        ).fetchall()
-        return [Edge.from_dict(dict(row)) for row in rows]
-
-    # -- Chunks --
-
-    def save_chunk(self, chunk: Chunk) -> None:
-        self._conn.execute(
-            """INSERT OR REPLACE INTO chunks (id, text, document_id, idx)
-            VALUES (?, ?, ?, ?)""",
-            (chunk.id, chunk.text, chunk.document_id, chunk.index),
-        )
-        self._conn.commit()
-
-    def load_chunks(self) -> dict[str, Chunk]:
-        rows = self._conn.execute("SELECT * FROM chunks").fetchall()
-        return {
-            row["id"]: Chunk(
-                id=row["id"],
-                text=row["text"],
-                document_id=row["document_id"],
-                index=row["idx"],
-            )
-            for row in rows
-        }
-
-    def get_chunk(self, chunk_id) -> Optional[Chunk]:
-        row = self._conn.execute(
-            "SELECT * FROM chunks WHERE id = ?", (chunk_id,)
-        ).fetchone()
-        if row is None:
-            return None
-        return Chunk(
-            id = row["id"],
-            text=row["text"],
-            document_id=row["document_id"],
-            index=row["idx"],
-        )
-
-    # -- Documents --
-
-    def save_document(self, doc: Document) -> None:
-        self._conn.execute(
-            """INSERT OR REPLACE INTO documents
-            (id, path, name, chunks, checksum, ingested_at)
-            VALUES (:id, :path, :name, :chunks, :checksum, :ingested_at)
-            """,
-            doc.to_dict()
-        )
-        self._conn.commit()
-
-    def load_documents(self) -> dict[str, Document]:
-        rows = self._conn.execute("SELECT * FROM DOCUMENTS").fetchall()
-        return {row["id"]: Document.from_dict(dict(row)) for row in rows}
-
-    def get_document_by_checksum(self, checksum: str) -> Optional[Document]:
-        row = self._conn.execute(
-            "SELECT * FROM documents WHERE checksum = ?",
-            (checksum,)
-        ).fetchone()
-        if row is None:
-            return None
-        return Document.from_dict(dict(row))
-
-    # -- Evidence Paths --
-
-    def save_evidence(self, ev: EvidencePath) -> str:
-        d = ev.to_dict()
-        self._conn.execute(
-            """INSERT INTO evidence_paths
-            (id, question, entry_nodes, visited_nodes, traversed_edges, source_chunks, answer, confidence, created_at)
-            VALUES (:id, :question, :entry_nodes, :visited_nodes, :traversed_edges, :source_chunks, :answer, :confidence, :created_at)""",
-            d,
-        )
-        self._conn.commit()
-        return d["id"]
-
-    def load_evidence_for_question(self, question: str, limit: int = 10) -> list[EvidencePath]:
-        rows = self._conn.execute(
-            """SELECT * FROM evidence_paths
-            WHERE question = ?
-            ORDER BY confidence DESC, created_at DESC LIMIT ?""",
-            (question, limit),
-        ).fetchall()
-        return [self._row_to_evidence(dict(row)) for row in rows]
-
-    def _row_to_evidence(self, d: dict) -> EvidencePath:
-        edge_dicts = json.loads(d["traversed_edges"])
-        return EvidencePath(
-            question=d["question"],
-            entry_nodes=json.loads(d["entry_nodes"]),
-            visited_nodes=json.loads(d["visited_nodes"]),
-            traversed_edges=[Edge.from_dict(e) for e in edge_dicts],
-            source_chunks=json.loads(d["source_chunks"]),
-            answer=d["answer"],
-            confidence=d["confidence"],
-            created_at=d["created_at"]
-        )
-
-    def close(self):
-        self._conn.close()
-
 
 # ---------------------------------------------------------------------------
 # Knowledge Graph (in memory cache + SQLite persistence)
@@ -270,14 +33,15 @@ class KnowledgeGraph:
     """
     def __init__(
         self,
+        store: GraphStore,
         embedding_model: StaticModel,
         querying_model: StaticModel,
-        db_path: str = "graphsleuth.db",
         dedup_threshold: float = 0.92,
         min_entry_score: float = 0.35,
         guided_traversal_min_score: float = 0.20,
         beam_width: int = 3,
     ):
+        self.store = store
         self.dedup_threshold = dedup_threshold
         self.embedding_model = embedding_model
         self.querying_model = querying_model
@@ -285,9 +49,7 @@ class KnowledgeGraph:
         self.guided_traversal_min_score = guided_traversal_min_score
         self.beam_width = beam_width
 
-        self.store = GraphStore(db_path)
-
-        # in memory caches (loaded from SQLite on init)
+        # in memory caches (loaded from store on init)
         self.nodes: dict[str, Node] = self.store.load_nodes()
         self.chunks: dict[str, Chunk] = self.store.load_chunks()
         self.documents: dict[str, Document] = self.store.load_documents()
@@ -299,7 +61,7 @@ class KnowledgeGraph:
         self.in_edges: dict[str, list[Edge]] = defaultdict(list)
         self._load_edges_into_cache()
 
-        self.querying_matrix: Optional[np.ndarray] = None
+        self.querying_matrix: np.ndarray | None = None
         self.querying_ids: list[str] = []
         self._rebuild_query_matrix()
 
@@ -393,7 +155,7 @@ class KnowledgeGraph:
         self.store.save_chunk(chunk)
         return chunk.id
 
-    def get_chunk(self, chunk_id: str) -> Optional[Chunk]:
+    def get_chunk(self, chunk_id: str) -> Chunk | None:
         """Get a chunk by ID (from cache, fallback to sqlite)."""
         if chunk_id in self.chunks:
             return self.chunks[chunk_id]
@@ -420,7 +182,7 @@ class KnowledgeGraph:
         self._add_to_query_matrix(node)
         return node.id
 
-    def get_node(self, node_id: str) -> Optional[Node]:
+    def get_node(self, node_id: str) -> Node | None:
         return self.nodes.get(node_id)
 
     def update_node_chunks(self, node_id: str, new_chunk_id: str) -> bool:
@@ -536,8 +298,8 @@ class KnowledgeGraph:
         start_node_id: str,
         max_depth: int = 2,
         direction: str = "both", # out, in, both
-        relation_filter: Optional[str] = None,
-        node_type_filter: Optional[str] = None,
+        relation_filter: str | None = None,
+        node_type_filter: str | None = None,
     ) -> tuple[set[str], list[Edge]]:
         """
         BFS traversal from a starting node.

@@ -11,7 +11,8 @@ import uuid
 from pathlib import Path
 from typing import Callable
 
-from graph import KnowledgeGraph, Chunk
+from engine.models.document import Chunk
+from engine.graph.knowledge_graph import KnowledgeGraph
 from extractor import EntityExtractor
 
 
