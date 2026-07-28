@@ -74,6 +74,9 @@ class InvestigatorAgent:
         max_evidence_chunks: int = 8,
         max_depth: int = 2,
         top_k: int = 3,
+        min_entry_score: float | None = None,
+        beam_width: int | None = None,
+        guided_traversal_min_score: float | None = None,
     ):
         self.kg = kg
         self.model_name = model_name
@@ -81,6 +84,9 @@ class InvestigatorAgent:
         self.max_evidence_chunks = max_evidence_chunks
         self.max_depth = max_depth
         self.top_k = top_k
+        self.min_entry_score = min_entry_score
+        self.beam_width = beam_width
+        self.guided_traversal_min_score = guided_traversal_min_score
 
         self.client = get_openai() if use_openai else get_ollama()
 
@@ -127,7 +133,11 @@ class InvestigatorAgent:
         evidence = self.kg.multi_hop_query(
             question=question,
             top_k=self.top_k,
+            max_depth=self.max_depth,
             direction="both",
+            min_entry_score=self.min_entry_score,
+            beam_width=self.beam_width,
+            guided_traversal_min_score=self.guided_traversal_min_score,
         )
         steps.append({
             "step": 2,
@@ -140,6 +150,16 @@ class InvestigatorAgent:
             },
             "latency_ms": round((time.time() - step2_start) * 1000, 2),
         })
+
+        if not evidence.entry_nodes and not evidence.source_chunks:
+            return AgentAnswer(
+                answer="I could not find any relevant entities or source text for this question. "
+                       "Try rephrasing your question or ingesting documents related to this topic.",
+                evidence=evidence,
+                reasoning_steps=steps,
+                model_used=self.model_name,
+                latency_ms=round((time.time() - start_time) * 1000, 2),
+            )
 
         # Step 3: Read source chunks
         step3_start = time.time()
@@ -337,7 +357,7 @@ if __name__ == "__main__":
         "MinishLab/potion-retrieval-32M"
     )
 
-    kg = KnowledgeGraph(embedding_model=embed, querying_model=query, db_path="db/test_graph_openai3.db")
+    kg = KnowledgeGraph(embedding_model=embed, querying_model=query, db_path="db/test_graph_openai4.db")
 
     from extractor import EntityExtractor
 
@@ -354,7 +374,10 @@ if __name__ == "__main__":
         model_name="deepseek-v4-flash",
         use_openai=True,
         max_evidence_chunks=12,
-        top_k=5
+        top_k=5,
+        min_entry_score=0.30,
+        guided_traversal_min_score=0.20,
+        beam_width=5,
     )
 
     print("\n" + "="*60)

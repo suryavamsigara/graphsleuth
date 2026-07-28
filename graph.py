@@ -406,10 +406,16 @@ class KnowledgeGraph:
         querying_model: StaticModel,
         db_path: str = "graphsleuth.db",
         dedup_threshold: float = 0.92,
+        min_entry_score: float = 0.35,
+        guided_traversal_min_score: float = 0.20,
+        beam_width: int = 3,
     ):
         self.dedup_threshold = dedup_threshold
         self.embedding_model = embedding_model
         self.querying_model = querying_model
+        self.min_entry_score = min_entry_score
+        self.guided_traversal_min_score = guided_traversal_min_score
+        self.beam_width = beam_width
 
         self.store = GraphStore(db_path)
 
@@ -718,6 +724,9 @@ class KnowledgeGraph:
         top_k: int = 3,
         max_depth: int = 2,
         direction: str = "both",
+        min_entry_score: float | None = None,
+        beam_width: int | None = None,
+        guided_traversal_min_score: float | None = None,
     ) -> EvidencePath:
         """
         The main query interface.
@@ -726,25 +735,38 @@ class KnowledgeGraph:
         3. Collect all reachable nodes, edges, and source chunks
         4. Return an EvidencePath
         """
-        entry_nodes_with_scores = self.get_top_k_nodes(question, k=top_k)
+        min_entry = min_entry_score if min_entry_score is not None else self.min_entry_score
+        beam = beam_width if beam_width is not None else self.beam_width
+        guided_min = guided_traversal_min_score if guided_traversal_min_score is not None else self.guided_traversal_min_score
 
-        MIN_ENTRY_SCORE = 0.50
-        valid_entries = [(nid, score) for nid, score in entry_nodes_with_scores if score >= MIN_ENTRY_SCORE]
+        entry_nodes_with_scores = self.get_top_k_nodes(question, k=top_k)
+        valid_entries = [(nid, score) for nid, score in entry_nodes_with_scores if score >= min_entry]
         print("Valid: ", valid_entries)
+
         if not valid_entries:
+            chunk_results = self.search_chunks(question, k=top_k)
+            if chunk_results:
+                return EvidencePath(
+                    question=question,
+                    entry_nodes=[],
+                    visited_nodes=[],
+                    traversed_edges=[],
+                    source_chunks=[cid for cid, _ in chunk_results],
+                    confidence=round(sum(score for _, score in chunk_results) / len(chunk_results), 4),
+                )
+
             return EvidencePath(
-            question=question,
-            entry_nodes=[],
-            visited_nodes=[],
-            traversed_edges=[],
-            source_chunks=[],
-            confidence=0.0,
-        )
+                question=question,
+                entry_nodes=[],
+                visited_nodes=[],
+                traversed_edges=[],
+                source_chunks=[],
+                confidence=0.0,
+            )
         entry_node_ids = [nid for nid, _ in valid_entries]
 
         all_visited: set[str] = set()
         all_edges: list[Edge] = []
-        all_chunk_ids: set[str] = set()
 
         for start_id in entry_node_ids:
             visited, edges, scores = self.guided_traversal(
@@ -752,11 +774,14 @@ class KnowledgeGraph:
                 query=question,
                 max_depth=max_depth,
                 direction=direction,
+                beam_width=beam,
+                guided_min_score=guided_min,
             )
             all_visited.update(visited)
             all_edges.extend(edges)
 
         # Collect source chuks from all visited nodes
+        all_chunk_ids: set[str] = set()
         for node_id in all_visited:
             node = self.nodes.get(node_id)
             if node:
@@ -769,9 +794,7 @@ class KnowledgeGraph:
             if e.id not in seen_edge_ids:
                 seen_edge_ids.add(e.id)
                 unique_edges.append(e)
-
-        for edge in unique_edges:
-            all_chunk_ids.add(edge.source_chunk_id)
+                all_chunk_ids.add(e.source_chunk_id)
 
         # Confidence = average similarity of entry nodes
         avg_confidence = (
@@ -793,7 +816,8 @@ class KnowledgeGraph:
         query: str,
         max_depth: int = 2,
         beam_width: int = 3,
-        direction: str = "both"
+        direction: str = "both",
+        guided_min_score: float | None = None,
     ) -> tuple[set[str], list[Edge], list[float]]:
         """
         Beam search traversal guided by query relevance.
@@ -801,6 +825,8 @@ class KnowledgeGraph:
         """
         if start_node_id not in self.nodes:
             return set(), [], []
+
+        min_score = guided_min_score if guided_min_score is not None else self.guided_traversal_min_score
 
         # Score a node by query embedding similarity
         def score_node(node_id: str) -> float:
@@ -837,7 +863,7 @@ class KnowledgeGraph:
                         continue
 
                     neighbor_score = score_node(neighbor_id)
-                    if neighbor_score < 0.5:
+                    if neighbor_score < min_score:
                         continue
 
                     new_edges = edges_so_far + [edge]
@@ -854,6 +880,27 @@ class KnowledgeGraph:
             path_edges.extend([e for _, edges, _ in beam for e in edges])
             scores.extend([s for _, _, s in beam])
         return visited, path_edges, scores
+
+    def search_chunks(self, query: str, k: int = 5) -> list[tuple[str, float]]:
+        """Search chunks directly by embedding similarity (fallback)."""
+        if not self.chunks:
+            return []
+
+        query_emb = self.querying_model.encode(query).reshape(1, -1)
+        texts, ids = [], []
+        for cid, chunk in self.chunks.items():
+            texts.append(chunk.text)
+            ids.append(cid)
+
+        if not texts:
+            return []
+
+        embs = self.querying_model.encode(texts)
+        sims = cosine_similarity(query_emb, np.vstack(embs))[0]
+        actual_k = min(k, len(ids))
+        top_indices = sims.argsort()[::-1][:actual_k]
+
+        return [(ids[idx], float(sims[idx])) for idx in top_indices]
 
 
     # ---------------------------------------------------------------------------
