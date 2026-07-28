@@ -144,10 +144,11 @@ class EvidencePath:
     answer: str = ""
     confidence: float = 0.0
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    id: str = field(default_factory=lambda: str(uuid.uuid4()))
     
     def to_dict(self) -> dict:
         return {
-            "id": str(uuid.uuid4()),
+            "id": self.id,
             "question": self.question,
             "entry_nodes": json.dumps(self.entry_nodes),
             "visited_nodes": json.dumps(self.visited_nodes),
@@ -768,6 +769,9 @@ class KnowledgeGraph:
             if e.id not in seen_edge_ids:
                 seen_edge_ids.add(e.id)
                 unique_edges.append(e)
+
+        for edge in unique_edges:
+            all_chunk_ids.add(edge.source_chunk_id)
 
         # Confidence = average similarity of entry nodes
         avg_confidence = (

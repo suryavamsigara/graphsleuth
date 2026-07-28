@@ -337,7 +337,7 @@ if __name__ == "__main__":
         "MinishLab/potion-retrieval-32M"
     )
 
-    kg = KnowledgeGraph(embedding_model=embed, querying_model=query, db_path="db/test_graph_openai2.db")
+    kg = KnowledgeGraph(embedding_model=embed, querying_model=query, db_path="db/test_graph_openai3.db")
 
     from extractor import EntityExtractor
 
