@@ -122,7 +122,7 @@ class EntityExtractor:
         parsed = ExtractionResult.model_validate(raw_json)
         print("Extracted!")
 
-        nodes: list[Node] = []
+        nodes_dict: list[str, Node] = {}
         name_to_node_id: dict[str, str] = {}
 
         for ent in parsed.entities:
@@ -137,6 +137,7 @@ class EntityExtractor:
             if matched_node_id:
                 # Merge
                 name_to_node_id[canonical_name] = matched_node_id
+                nodes_dict[matched_node_id] = existing_nodes[matched_node_id]
 
                 for alias in ent.aliases:
                     name_to_node_id[alias.strip()] = matched_node_id
@@ -148,7 +149,7 @@ class EntityExtractor:
                     description=ent.description.strip(),
                     source_chunk_ids=[chunk_id],
                 )
-                nodes.append(node)
+                nodes_dict[node.id] = node
                 name_to_node_id[canonical_name] = node.id
                 for alias in ent.aliases:
                     name_to_node_id[alias.strip()] = node.id
@@ -162,10 +163,15 @@ class EntityExtractor:
             src_id = name_to_node_id.get(src_name)
             tgt_id = name_to_node_id.get(tgt_name)
 
-            if src_id is None and existing_nodes:
-                src_id = self._fuzzy_name_match(src_name, existing_nodes)
-            if tgt_id is None and existing_nodes:
-                tgt_id = self._fuzzy_name_match(tgt_name, existing_nodes)
+            if src_id is None:
+                src_id = self._fuzzy_name_match(src_name, nodes_dict)
+                if src_id is None and existing_nodes:
+                    src_id = self._fuzzy_name_match(src_name, existing_nodes)
+            
+            if tgt_id is None:
+                tgt_id = self._fuzzy_name_match(tgt_name, nodes_dict)
+                if tgt_id is None and existing_nodes:
+                    tgt_id = self._fuzzy_name_match(tgt_name, existing_nodes)
 
             if src_id and tgt_id and src_id != tgt_id:
                 edge = Edge(
@@ -175,7 +181,7 @@ class EntityExtractor:
                     source_chunk_id=chunk_id,
                 )
                 edges.append(edge)
-        return nodes, edges
+        return list(nodes_dict.values()), edges
 
 
     def _call_llm_with_retry(self, chunk_text: str):
@@ -183,9 +189,9 @@ class EntityExtractor:
         print(chunk_text.strip())
 
         messages = [
-        {"role": "system", "content": "You are a precise data extraction system. Always respond with raw JSON matching the expected format. CRUCIAL: Every entity must include the 'aliases' list field, even if it is empty []."},
-        {"role": "user", "content": prompt}
-    ]
+            {"role": "system", "content": "You are a precise data extraction system. Always respond with raw JSON matching the expected format. CRUCIAL: Every entity must include the 'aliases' list field, even if it is empty []."},
+            {"role": "user", "content": prompt}
+        ]
 
         last_error: Exception | None = None
 
@@ -200,7 +206,6 @@ class EntityExtractor:
                 }
 
                 if not self.use_local:
-                    kwargs["max_tokens"] = 4096
                     kwargs["response_format"] = {"type": "json_object"}
                 else:
                     kwargs["max_completion_tokens"] = 2048
@@ -242,8 +247,8 @@ class EntityExtractor:
         cleaned = re.sub(r"\s*```$", "", cleaned.strip(), flags=re.MULTILINE)
         try:
             return json.loads(cleaned)
-        except json.JSONDecodeError:
-            pass
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Failed to parse JSON cleanly: {e}")
 
     def _find_duplicate(
         self,

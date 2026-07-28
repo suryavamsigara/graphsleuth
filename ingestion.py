@@ -46,7 +46,7 @@ def extract_text_from_file(file_path: str) -> str:
     raise ValueError(f"Unsupported file type: {suffix}. Supported: {text_extensions}")
 
 
-def chunk_by_paragraphs(text: str, max_chars: int = 500, overlap: int = 50) -> list[str]:
+def chunk_by_paragraphs(text: str, max_chars: int = 1200, overlap: int = 150) -> list[str]:
     """
     Splits text into paragraphs.
     """
@@ -230,10 +230,11 @@ class IngestionPipeline:
         for f in files:
             result = self.ingest_file(str(f), f.name)
             results.append(result)
-            print(f"  [{"OK" if result["success"] else "FAIL"}] {f.name}: "
-                    f"{result["chunks_processed"]} chunks, "
-                    f"{result["nodes_created"]} nodes, "
-                    f"{result["edges_created"]} edges")
+            status = "OK" if result["success"] else "FAIL"
+            print(f"  [{status}] {f.name}: "
+                f"{result['chunks_processed']} chunks, "
+                f"{result['nodes_created']} nodes, "
+                f"{result['edges_created']} edges")
         return results
 
     def get_stats(self) -> dict:

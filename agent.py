@@ -7,6 +7,7 @@ Returns both the answer and a complete EvidencePath for visualization.
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from sklearn.metrics.pairwise import cosine_similarity
 
 from graph import KnowledgeGraph, EvidencePath
 from client import get_ollama, get_openai
@@ -142,17 +143,25 @@ class InvestigatorAgent:
 
         # Step 3: Read source chunks
         step3_start = time.time()
-        chunk_texts = []
         chunk_lookup = {}  # chunk_id -> text (for citation)
+        chunk_scores = []
 
-        for cid in evidence.source_chunks[:self.max_evidence_chunks]:
+        for cid in evidence.source_chunks:
             chunk = self.kg.get_chunk(cid)
             if chunk:
-                chunk_texts.append(f"[CHUNK {cid}]:\n{chunk.text}\n")
+                chunk_emb = self.kg.querying_model.encode(chunk.text).reshape(1, -1)
+                query_emb = self.kg.querying_model.encode(question).reshape(1, -1)
+                score = float(cosine_similarity(query_emb, chunk_emb)[0][0])
+                chunk_scores.append((cid, chunk.text, score))
                 chunk_lookup[cid] = chunk.text
 
+        print(chunk_scores)
 
-        if not chunk_texts:
+        chunk_scores.sort(key=lambda x: x[2], reverse=True)
+        top_chunks = [f"[CHUNK {c_data[0]}]:\n{c_data[1]}" for c_data in chunk_scores][:self.max_evidence_chunks]
+
+
+        if not top_chunks:
             return AgentAnswer(
                 answer="I found relevant entities in the graph but could not retrieve their source text. "
                         "The graph may be corrupted or the chunks were not properly stored.",
@@ -165,8 +174,8 @@ class InvestigatorAgent:
         steps.append({
             "step": 3,
             "action": "read_chunks",
-            "input": f"{len(evidence.source_chunks)} chunks available, {len(chunk_texts)} retrieved",
-            "output": f"Retrieved {len(chunk_texts)} chunks",
+            "input": f"{len(evidence.source_chunks)} chunks available, {len(top_chunks)} retrieved",
+            "output": f"Retrieved {len(top_chunks)} chunks",
             "latency_ms": round((time.time() - step3_start) * 1000, 2),
         })
 
@@ -198,8 +207,8 @@ class InvestigatorAgent:
         RELATIONS DISCOVERED ({len(edge_context)}):
         {chr(10).join(edge_context)}
         
-        SOURCE CHUNKS ({len(chunk_texts)}):
-        {chr(10).join(chunk_texts)}
+        SOURCE CHUNKS ({len(top_chunks)}):
+        {chr(10).join(top_chunks)}
         
         === QUESTION ===
         {question}
@@ -223,7 +232,7 @@ class InvestigatorAgent:
         try:
             if self.use_openai:
                 response = self.client.chat.completions.create(
-                    model="deepseek-v4-flash",
+                    model=self.model_name,
                     messages=messages,
                     temperature=0.2,
                     max_tokens=2048,
@@ -253,7 +262,7 @@ class InvestigatorAgent:
         steps.append({
             "step": 5,
             "action": "synthesize",
-            "input": f"{len(entity_context)} entities, {len(chunk_texts)} chunks",
+            "input": f"{len(entity_context)} entities, {len(top_chunks)} chunks",
             "output": answer_text[:200] + "..." if len(answer_text) > 200 else answer_text,
             "latency_ms": round((time.time() - step5_start) * 1000, 2),
         })
@@ -328,7 +337,7 @@ if __name__ == "__main__":
         "MinishLab/potion-retrieval-32M"
     )
 
-    kg = KnowledgeGraph(embedding_model=embed, querying_model=query, db_path="db/test_graph_openai.db")
+    kg = KnowledgeGraph(embedding_model=embed, querying_model=query, db_path="db/test_graph_openai2.db")
 
     from extractor import EntityExtractor
 
@@ -342,16 +351,17 @@ if __name__ == "__main__":
     # Test agent
     agent = InvestigatorAgent(
         kg=kg,
+        model_name="deepseek-v4-flash",
         use_openai=True,
         max_evidence_chunks=12,
         top_k=5
     )
 
     print("\n" + "="*60)
-    print("QUESTION: Who were the key founders of OpenAI and what were their backgrounds before joining the organization?")
+    print("QUESTION: Which employee previously worked at OpenAI?")
     print("="*60)
 
-    answer = agent.investigate("Which companies are competing in cloud AI?")
+    answer = agent.investigate("Which employee previously worked at OpenAI?")
     print(f"\nAnswer:\n{answer.answer}")
     print(f"\nEvidence: {len(answer.evidence.visited_nodes)} nodes, {len(answer.evidence.traversed_edges)} edges")
     print(f"Confidence: {answer.evidence.confidence}")

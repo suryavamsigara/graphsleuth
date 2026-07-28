@@ -656,7 +656,7 @@ class KnowledgeGraph:
     # Traversal
     # ------------------------------------------------------------------
 
-    def traverse(
+    def bfs_traversal(
         self,
         start_node_id: str,
         max_depth: int = 2,
@@ -726,15 +726,29 @@ class KnowledgeGraph:
         4. Return an EvidencePath
         """
         entry_nodes_with_scores = self.get_top_k_nodes(question, k=top_k)
-        entry_node_ids = [nid for nid, _ in entry_nodes_with_scores]
+
+        MIN_ENTRY_SCORE = 0.50
+        valid_entries = [(nid, score) for nid, score in entry_nodes_with_scores if score >= MIN_ENTRY_SCORE]
+        print("Valid: ", valid_entries)
+        if not valid_entries:
+            return EvidencePath(
+            question=question,
+            entry_nodes=[],
+            visited_nodes=[],
+            traversed_edges=[],
+            source_chunks=[],
+            confidence=0.0,
+        )
+        entry_node_ids = [nid for nid, _ in valid_entries]
 
         all_visited: set[str] = set()
         all_edges: list[Edge] = []
         all_chunk_ids: set[str] = set()
 
         for start_id in entry_node_ids:
-            visited, edges = self.traverse(
+            visited, edges, scores = self.guided_traversal(
                 start_node_id=start_id,
+                query=question,
                 max_depth=max_depth,
                 direction=direction,
             )
@@ -757,7 +771,7 @@ class KnowledgeGraph:
 
         # Confidence = average similarity of entry nodes
         avg_confidence = (
-            sum(score for _, score in entry_nodes_with_scores) / len(entry_nodes_with_scores) if entry_nodes_with_scores else 0.0
+            sum(score for _, score in valid_entries) / len(valid_entries) if valid_entries else 0.0
         )
 
         return EvidencePath(
@@ -768,6 +782,74 @@ class KnowledgeGraph:
             source_chunks=list(all_chunk_ids),
             confidence=round(avg_confidence, 4),
         )
+
+    def guided_traversal(
+        self,
+        start_node_id: str,
+        query: str,
+        max_depth: int = 2,
+        beam_width: int = 3,
+        direction: str = "both"
+    ) -> tuple[set[str], list[Edge], list[float]]:
+        """
+        Beam search traversal guided by query relevance.
+        At each hop, only keep top-k most relevant neighbors.
+        """
+        if start_node_id not in self.nodes:
+            return set(), [], []
+
+        # Score a node by query embedding similarity
+        def score_node(node_id: str) -> float:
+            node = self.nodes.get(node_id)
+            if not node:
+                return 0.0
+            text = f"{node.name} {node.description} {node.node_type}"
+            emb = self.querying_model.encode(text).reshape(1, -1)
+            query_emb = self.querying_model.encode(query).reshape(1, -1)
+            return float(cosine_similarity(query_emb, emb)[0][0])
+
+        visited = {start_node_id}
+        path_edges = []
+        scores = [score_node(start_node_id)]
+
+        # beam = list of (node_id, path_edges_to_here, cumulative_score)
+        beam = [(start_node_id, [], score_node(start_node_id))]
+
+        for depth in range(max_depth):
+            candidates = []
+
+            for current_id, edges_so_far, cum_score in beam:
+                # Get neighbours
+                neighbors = []
+                if direction in ("out", "both"):
+                    for e in self.out_edges.get(current_id, []):
+                        neighbors.append((e.target_id, e))
+                if direction in ("in", "both"):
+                    for e in self.in_edges.get(current_id, []):
+                        neighbors.append((e.source_id, e))
+
+                for neighbor_id, edge in neighbors:
+                    if neighbor_id in visited:
+                        continue
+
+                    neighbor_score = score_node(neighbor_id)
+                    if neighbor_score < 0.5:
+                        continue
+
+                    new_edges = edges_so_far + [edge]
+                    new_score = cum_score + neighbor_score
+                    candidates.append((neighbor_id, new_edges, new_score))
+                    visited.add(neighbor_id)
+
+            if not candidates:
+                break
+
+            # Keep top beam_width candidates
+            candidates.sort(key=lambda x: x[2], reverse=True)
+            beam = candidates[:beam_width]
+            path_edges.extend([e for _, edges, _ in beam for e in edges])
+            scores.extend([s for _, _, s in beam])
+        return visited, path_edges, scores
 
 
     # ---------------------------------------------------------------------------
