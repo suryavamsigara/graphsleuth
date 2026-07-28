@@ -346,7 +346,7 @@ class GraphStore:
     def get_document_by_checksum(self, checksum: str) -> Optional[Document]:
         row = self._conn.execute(
             "SELECT * FROM documents WHERE checksum = ?",
-            {checksum,}
+            (checksum,)
         ).fetchone()
         if row is None:
             return None
@@ -605,11 +605,11 @@ class KnowledgeGraph:
 
     def get_outgoing_edges(self, node_id: str) -> list[Edge]:
         """Get all edges where node+id is the source."""
-        return list[self.out_edges.get(node_id, [])]
+        return list(self.out_edges.get(node_id, []))
 
     def get_incoming_edges(self, node_id: str) -> list[Edge]:
         """Get all edges where node_id is the target."""
-        return list[self.in_edges.get(node_id, [])]
+        return list(self.in_edges.get(node_id, []))
 
     def get_all_edges(self, node_id: str) -> list[Edge]:
         """Get all edges connected to node_id (both directions)."""

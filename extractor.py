@@ -122,7 +122,7 @@ class EntityExtractor:
         parsed = ExtractionResult.model_validate(raw_json)
         print("Extracted!")
 
-        nodes_dict: list[str, Node] = {}
+        nodes_dict: dict[str, Node] = {}
         name_to_node_id: dict[str, str] = {}
 
         for ent in parsed.entities:
