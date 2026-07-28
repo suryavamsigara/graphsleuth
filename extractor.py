@@ -197,29 +197,34 @@ class EntityExtractor:
 
         for attempt in range(1, self.max_retries + 1):
             try:
+                current_timeout = 600.0 if self.use_local else self.timeout
+
                 kwargs = {
                     "model": self.model_name,
                     "messages": messages,
                     "stream": False,
                     "temperature": self.temperature,
-                    "timeout": httpx.Timeout(self.timeout),
+                    "timeout": httpx.Timeout(current_timeout),
                 }
 
                 if not self.use_local:
                     kwargs["response_format"] = {"type": "json_object"}
                 else:
-                    kwargs["max_completion_tokens"] = 2048
+                    # kwargs["max_completion_tokens"] = 2048
                     kwargs["extra_body"] = {
                         "response_format": {
                             "type": "json_object",
                             "schema": ExtractionResult.model_json_schema()
                         },
                         "options": {
-                            "num_ctx": 8192,
+                            # "num_ctx": 8192,
                             "temperature": 0.0,
                             "num_thread": 4,
-                            "numa": True,
+                            "numa": False,
                             "low_vram": True,
+                            "num_ctx": 4096,
+                            "use_mmap": True,
+                            "f16_kv": True
                         }
                     }
 

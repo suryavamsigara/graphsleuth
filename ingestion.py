@@ -11,7 +11,7 @@ import uuid
 from pathlib import Path
 from typing import Callable
 
-from graph import KnowledgeGraph, Node, Edge, Chunk, Document
+from graph import KnowledgeGraph, Chunk
 from extractor import EntityExtractor
 
 
