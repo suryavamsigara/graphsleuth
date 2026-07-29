@@ -1,7 +1,7 @@
 """
 Entity & Relation extraction pipeline for GraphSleuth
 
-Takes raw text chunks, calls a local LLM (Ollama), and returns structured
+Takes raw text chunks, calls an LLM, and returns structured
 Node and Edge objects ready for ingestion into KnowledgeGraph.
 """
 
@@ -10,81 +10,14 @@ import re
 import httpx
 import time
 import numpy as np
-from typing import Optional
-from pydantic import BaseModel, Field
 from sklearn.metrics.pairwise import cosine_similarity
 
 from client import get_ollama, get_openai
 from engine.models.node import Node
 from engine.models.edge import Edge
+from engine.extraction.prompts import EXTRACTION_PROMPT
+from engine.extraction.schemas import ExtractionResult
 
-class ExtractedEntity(BaseModel):
-    """Single entity as returned by the LLM."""
-    name: str = Field(description="Canonical name of the entity. E.g. 'Elon Musk'")
-    entity_type: str = Field(
-        description="Category: PERSON, ORGANIZATION, LOCATION, EVENT, PRODUCT, CONCEPT, REGULATION, or OTHER"
-    )
-    description: str = Field(
-        description="1-2 sentence description of this entity in context"
-    )
-    aliases: list[str] = Field(
-        default_factory=list,
-        description="Alternative names, abbreviations, or pronouns that refer to the same entity"
-    )
-
-class ExtractedRelation(BaseModel):
-    """Single relation as returned by the LLM."""
-    source: str = Field(description="Name of the source entity (must match an extracted entity name)")
-    target: str = Field(description="Name of the target entity (must match an extracted entity name)")
-    relation: str = Field(
-        description="Short predicate. E.g. 'founded', 'acquired', 'caused', 'opposed', 'works_for'"
-    )
-
-class ExtractionResult(BaseModel):
-    """Top-level schema we force the LLM to emit."""
-    entities: list[ExtractedEntity] = Field(default_factory=list)
-    relations: list[ExtractedRelation] = Field(default_factory=list)
-
-EXTRACTION_PROMPT = """
-You are a precise knowledge-graph extraction engine.
-
-TASK: Read the text below and extract:
-1. ENTITIES — people, organizations, locations, events, products, concepts, regulations
-2. RELATIONS — directed connections between those entities
-
-RULES:
-- Use canonical names (e.g. "Tesla, Inc." not "the company").
-- Include 1-2 sentence descriptions grounded in the text. Descriptions should identify the entity itself.
-Do not repeat relationship facts that are already represented as relations.
-- Add aliases only if the text explicitly uses alternative names.
-- Relations must use simple, exact predicates matching the schema
-- Only extract entities and relations that are EXPLICITLY stated or strongly implied by the text. Do not hallucinate.
-- If no entities or relations are present, return empty arrays.
-
-OUTPUT FORMAT — strict JSON, no markdown, no commentary:
-{
-  "entities": [
-    {
-      "name": "...",
-      "entity_type": "...",
-      "description": "...",
-      "aliases": ["..."]
-    }
-  ],
-  "relations": [
-    {
-      "source": "...",
-      "target": "...",
-      "relation": "..."
-    }
-  ]
-}
-
-TEXT:
----
-{chunk_text}
----
-"""
 
 class EntityExtractor:
     """
@@ -115,7 +48,7 @@ class EntityExtractor:
         self,
         chunk_text: str,
         chunk_id: str,
-        existing_nodes: Optional[dict[str, Node]] = None,
+        existing_nodes: dict[str, Node] | None = None,
     ) -> tuple[list[Node], list[Edge]]:
         """Extracts nodes and edges from a single chunk."""
         print("Extracting...")
@@ -260,8 +193,8 @@ class EntityExtractor:
         self,
         name: str,
         description: str,
-        existing_nodes: Optional[dict[str, Node]],
-    ) -> Optional[str]:
+        existing_nodes: dict[str, Node] | None,
+    ) -> str | None:
         """
         Checks if name already exists in the graph.
         1. Exact alias match
@@ -329,7 +262,7 @@ class EntityExtractor:
 
         return None
 
-    def _fuzzy_name_match(self, name: str, existing_nodes: dict[str, Node]) -> Optional[str]:
+    def _fuzzy_name_match(self, name: str, existing_nodes: dict[str, Node]) -> str | None:
         """Last-resort fuzzy match for relation endpoints that missed exact match."""
         name_lower = name.lower()
         best_id = None

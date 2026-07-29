@@ -420,7 +420,7 @@ class KnowledgeGraph:
         """Retrieves previously saved evidence paths for a question"""
         return self.store.load_evidence_for_question(question)
 
-    def export_to_json(self, output_dir: str = "graph_exports") -> str:
+    def export_to_json(self, output_dir: str = "graph_exports") -> dict:
         """Exoprt the entire knowledge graph to json files."""
         output_path = Path(output_dir)
         output_path.mkdir(exist_ok=True)

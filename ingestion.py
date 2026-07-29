@@ -13,7 +13,7 @@ from typing import Callable
 
 from engine.models.document import Chunk
 from engine.graph.knowledge_graph import KnowledgeGraph
-from extractor import EntityExtractor
+from engine.extraction.extractor import EntityExtractor
 
 
 def extract_text_from_file(file_path: str) -> str:
