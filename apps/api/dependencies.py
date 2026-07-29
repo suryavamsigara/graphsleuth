@@ -2,7 +2,7 @@ import os
 from dotenv import load_dotenv
 
 from engine.graph.knowledge_graph import KnowledgeGraph
-from agent import InvestigatorAgent
+from engine.agent.reasoner import GraphReasoner
 from storage.graph_store import DBGraphStore
 from model2vec import StaticModel
 
@@ -40,9 +40,9 @@ def get_knowledge_graph() -> KnowledgeGraph:
         )
     return _kg
 
-def get_agent() -> InvestigatorAgent:
+def get_agent() -> GraphReasoner:
     kg = get_knowledge_graph()
-    return InvestigatorAgent(
+    return GraphReasoner(
         kg=kg,
         model_name="deepseek-v4-flash",
         use_openai=True,
