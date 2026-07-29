@@ -5,8 +5,9 @@ from pathlib import Path
 from engine.models.node import Node
 from engine.models.edge import Edge
 from engine.models.document import Chunk, Document, EvidencePath
+from engine.ports.graph_store import GraphStore
 
-class DBGraphStore:
+class PostgresGraphStore(GraphStore):
     """Full implementation"""
     def __init__(self, dsn: str):
         self.dsn = dsn

@@ -3,19 +3,19 @@ from dotenv import load_dotenv
 
 from engine.graph.knowledge_graph import KnowledgeGraph
 from engine.agent.reasoner import GraphReasoner
-from storage.graph_store import DBGraphStore
+from storage.graph_store import PostgresGraphStore
 from model2vec import StaticModel
 
 load_dotenv()
 
 # Later will use FastAPI Depends with lifespan
-_store: DBGraphStore | None = None
+_store: PostgresGraphStore | None = None
 _kg: KnowledgeGraph | None = None
 
-def get_graph_store() -> DBGraphStore:
+def get_graph_store() -> PostgresGraphStore:
     global _store
     if _store is None:
-        _store = DBGraphStore(dsn = os.getenv("DATABASE"))
+        _store = PostgresGraphStore(dsn = os.getenv("DATABASE"))
     return _store
 
 def get_knowledge_graph() -> KnowledgeGraph:
