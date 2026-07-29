@@ -3,8 +3,9 @@ from collections import deque
 from model2vec import StaticModel
 from sklearn.metrics.pairwise import cosine_similarity
 
+from engine.models.node import Node
 from engine.models.edge import Edge
-from engine.models.document import EvidencePath
+from engine.models.document import EvidencePath, Chunk
 
 
 class TraversalEngine:
@@ -15,9 +16,9 @@ class TraversalEngine:
     def bfs(
         self,
         start_node_id: str,
-        nodes: dict,
-        out_edges: dict,
-        in_edges: dict,
+        nodes: dict[str, Node],
+        out_edges: dict[str, list[Edge]],
+        in_edges: dict[str, list[Edge]],
         max_depth: int = 2,
         direction: str = "both", # out, in, both
         relation_filter: str | None = None,
@@ -75,9 +76,9 @@ class TraversalEngine:
         self,
         start_node_id: str,
         query: str,
-        nodes: dict,
-        out_edges: dict,
-        in_edges: dict,
+        nodes: dict[str, Node],
+        out_edges: dict[str, list[Edge]],
+        in_edges: dict[str, list[Edge]],
         max_depth: int = 2,
         beam_width: int = 3,
         direction: str = "both",
@@ -148,10 +149,10 @@ class TraversalEngine:
         self,
         question: str,
         entry_nodes_with_scores: list[tuple[str, float]],
-        nodes: dict,
-        out_edges: dict,
-        in_edges: dict,
-        chunks: dict,
+        nodes: dict[str, Node],
+        out_edges: dict[str, list[Edge]],
+        in_edges: dict[str, list[Edge]],
+        chunks: dict[str, Chunk],
         max_depth: int = 2,
         direction: str = "both",
         min_entry_score: float = 0.35,
@@ -242,7 +243,7 @@ class TraversalEngine:
     def _search_chunks(
         self,
         query: str,
-        chunks: dict,
+        chunks: dict[str, Chunk],
         k: int = 5,
     ) -> list[tuple[str, float]]:
         if not chunks:
