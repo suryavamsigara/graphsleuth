@@ -12,7 +12,7 @@ import time
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 
-from client import get_ollama, get_openai
+from engine.client import get_ollama, get_openai
 from engine.models.node import Node
 from engine.models.edge import Edge
 from engine.extraction.prompts import EXTRACTION_PROMPT

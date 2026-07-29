@@ -11,7 +11,8 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 from engine.models.document import EvidencePath
 from engine.graph.knowledge_graph import KnowledgeGraph
-from client import get_ollama, get_openai
+from engine.agent.prompts import REASONER_SYSTEM_PROMPT
+from engine.client import get_openai, get_ollama
 
 
 # -------------------------------------------------
@@ -30,27 +31,7 @@ class AgentAnswer:
     created_at: str = field(default_factory=lambda : datetime.now(timezone.utc).isoformat())
 
 
-INVESTIGATOR_SYSTEM_PROMPT = """You are GraphSleuth Investigator — an analytical agent that answers questions by examining evidence from a knowledge graph.
-
-You have access to:
-1. A knowledge graph of entities (people, organizations, events, etc.) and their relationships
-2. Source text chunks that ground every entity and relation in the original documents
-
-Your task:
-- Synthesize a clear, accurate answer based ONLY on the provided evidence
-- Cite specific entities and source chunks in your answer
-- If evidence is insufficient, say so explicitly — do not hallucinate
-- If evidence is contradictory, present both sides and note the conflict
-
-CITATION FORMAT:
-- When referencing an entity, use its canonical name: [Entity Name]
-- When referencing a source, use: [Source: chunk-id]
-- For key claims, include both: "Sam Altman [PERSON] founded OpenAI [ORGANIZATION] [Source: abc-123]"
-
-Be concise but thorough. Prioritize factual accuracy over completeness."""
-
-
-class InvestigatorAgent:
+class GraphReasoner:
     """
     ReAct style agent for graph based question answering.
     
@@ -92,7 +73,7 @@ class InvestigatorAgent:
         self.client = get_openai() if use_openai else get_ollama()
 
 
-    def investigate(self, question: str) -> AgentAnswer:
+    def answer(self, question: str) -> AgentAnswer:
         """
         Answers a question by investigating the knowledge graph.
         """
@@ -246,7 +227,7 @@ class InvestigatorAgent:
         # Step 5: Synthesize with LLM
         step5_start = time.time()
         messages = [
-            {"role": "system", "content": INVESTIGATOR_SYSTEM_PROMPT},
+            {"role": "system", "content": REASONER_SYSTEM_PROMPT},
             {"role": "user", "content": context},
         ]
 
@@ -341,59 +322,3 @@ class InvestigatorAgent:
         lines.append("")
         lines.append(f"Confidence: {evidence.confidence}")
         return "\n".join(lines)
-
-
-# if __name__ == "__main__":
-#     from model2vec import StaticModel
-#     from graph import KnowledgeGraph
-#     from ingestion import IngestionPipeline
-
-#     # Setup
-#     embed = StaticModel.from_pretrained(
-#         "MinishLab/potion-retrieval-32M",
-#         dimensionality=128,
-#     )
-
-#     query = StaticModel.from_pretrained(
-#         "MinishLab/potion-retrieval-32M"
-#     )
-
-#     kg = KnowledgeGraph(embedding_model=embed, querying_model=query, db_path="db/test_graph_openai4.db")
-
-#     from extractor import EntityExtractor
-
-#     extractor = EntityExtractor(model_name="deepseek-v4-flash", use_local=False, embedding_model=embed)
-#     pipeline = IngestionPipeline(kg=kg, extractor=extractor)
-
-
-#     result = pipeline.ingest_file("file.txt", "file")
-#     print(f"Ingested: {result['chunks_processed']} chunks, {result['nodes_created']} nodes, {result['edges_created']} edges")
-
-#     # Test agent
-#     agent = InvestigatorAgent(
-#         kg=kg,
-#         model_name="deepseek-v4-flash",
-#         use_openai=True,
-#         max_evidence_chunks=12,
-#         top_k=5,
-#         min_entry_score=0.30,
-#         guided_traversal_min_score=0.20,
-#         beam_width=5,
-#     )
-
-#     print("\n" + "="*60)
-#     print("QUESTION: Which employee previously worked at OpenAI?")
-#     print("="*60)
-
-#     answer = agent.investigate("Which employee previously worked at OpenAI?")
-#     print(f"\nAnswer:\n{answer.answer}")
-#     print(f"\nEvidence: {len(answer.evidence.visited_nodes)} nodes, {len(answer.evidence.traversed_edges)} edges")
-#     print(f"Confidence: {answer.evidence.confidence}")
-#     print(f"Latency: {answer.latency_ms}ms")
-
-#     print("\n--- Reasoning Steps ---")
-#     for step in answer.reasoning_steps:
-#         print(f"  Step {step['step']}: {step['action']} ({step['latency_ms']}ms)")
-
-#     print("\n--- Path Explanation ---")
-#     print(agent.explain_path(answer.evidence))
