@@ -90,7 +90,6 @@ class SupabaseGraphStore(GraphStore):
             "id": doc.id,
             "storage_path": doc.path,
             "name": doc.name,
-            "chunks": doc.chunks,
             "checksum": doc.checksum,
             "ingested_at": doc.ingested_at,
         }).execute()
@@ -165,7 +164,6 @@ class SupabaseGraphStore(GraphStore):
             "id": row["id"],
             "path": row["storage_path"],
             "name": row["name"],
-            "chunks": row["chunks"],
             "checksum": row["checksum"],
             "ingested_at": row["ingested_at"],
         })

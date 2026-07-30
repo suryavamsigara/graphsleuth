@@ -4,11 +4,12 @@ Agent for GraphSleuth
 ReAct style agent that answers questions by traversing the knowledge graph, reading source chunks, and synthesizing cited answers.
 Returns both the answer and a complete EvidencePath for visualization.
 """
-
+import numpy as np
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from sklearn.metrics.pairwise import cosine_similarity
 
+from engine.embeddings.encoder import EmbeddingEncoder
 from engine.models.document import EvidencePath
 from engine.graph.knowledge_graph import KnowledgeGraph
 from engine.agent.prompts import REASONER_SYSTEM_PROMPT
@@ -51,6 +52,7 @@ class GraphReasoner:
     def __init__(
         self,
         kg: KnowledgeGraph,
+        encoder: EmbeddingEncoder,
         model_name: str = "qwen3.5:4b",
         use_openai: bool = False,
         max_evidence_chunks: int = 8,
@@ -58,6 +60,7 @@ class GraphReasoner:
         top_k: int = 3,
     ):
         self.kg = kg
+        self.encoder = encoder
         self.model_name = model_name
         self.use_openai = use_openai
         self.max_evidence_chunks = max_evidence_chunks
@@ -139,19 +142,27 @@ class GraphReasoner:
         chunk_lookup = {}  # chunk_id -> text (for citation)
         chunk_scores = []
 
+        query_emb = self.encoder.encode_single(question)
+
         for cid in evidence.source_chunks:
             chunk = self.kg.get_chunk(cid)
             if chunk:
-                chunk_emb = self.kg.querying_model.encode(chunk.text).reshape(1, -1)
-                query_emb = self.kg.querying_model.encode(question).reshape(1, -1)
-                score = float(cosine_similarity(query_emb, chunk_emb)[0][0])
+                chunk_emb = self.encoder.encode_single(chunk.text)
+
+                score = float(cosine_similarity(
+                    np.array(query_emb).reshape(1, -1),
+                    np.array(chunk_emb).reshape(1, -1)
+                )[0][0])
                 chunk_scores.append((cid, chunk.text, score))
                 chunk_lookup[cid] = chunk.text
 
         print(chunk_scores)
 
         chunk_scores.sort(key=lambda x: x[2], reverse=True)
-        top_chunks = [f"[CHUNK {c_data[0]}]:\n{c_data[1]}" for c_data in chunk_scores][:self.max_evidence_chunks]
+        top_chunks = [
+            f"[CHUNK {c_data[0]}]:\n{c_data[1]}"
+            for c_data in chunk_scores
+        ][:self.max_evidence_chunks]
 
 
         if not top_chunks:

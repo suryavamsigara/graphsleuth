@@ -12,6 +12,7 @@ import time
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 
+from engine.embeddings.encoder import EmbeddingEncoder
 from engine.client import get_ollama, get_openai
 from engine.models.node import Node
 from engine.models.edge import Edge
@@ -27,7 +28,7 @@ class EntityExtractor:
         self,
         model_name: str = "qwen3.5:4b",
         use_local: bool = True,
-        embedding_model=None,
+        encoder: EmbeddingEncoder | None = None,
         dedup_threshold: float = 0.85,
         temperature: float = 0.0,
         max_retries: int = 3,
@@ -36,7 +37,7 @@ class EntityExtractor:
         self.use_local = use_local
         self.client = get_ollama() if self.use_local else get_openai()
         self.model_name = model_name
-        self.embedding_model = embedding_model
+        self.encoder = encoder
         self.dedup_threshold = dedup_threshold
         self.temperature = temperature
         self.max_retries = max_retries
@@ -235,16 +236,16 @@ class EntityExtractor:
             return None
 
         candidate_text = f"{name} {description}".strip()
-        candidate_emb = self.embedding_model.encode(candidate_text).reshape(1, -1)
+        candidate_emb = np.array(self.encoder.encode_single(candidate_text)).reshape(1, -1)
 
-        ids = []
-        embs = []
+        ids: list[str] = []
+        embs: list[np.ndarray] = []
         for node_id, node in existing_nodes.items():
             if node_id in self._node_embed_cache:
                 emb = self._node_embed_cache[node_id]
             else:
                 text = f"{node.name} {node.description}".strip()
-                emb = self.embedding_model.encode(text)
+                emb = np.array(self.encoder.encode_single(text))
                 self._node_embed_cache[node_id] = emb
             ids.append(node_id)
             embs.append(emb)

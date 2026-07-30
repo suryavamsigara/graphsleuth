@@ -1,6 +1,6 @@
 import numpy as np
+from typing import Callable
 from collections import deque
-from model2vec import StaticModel
 from sklearn.metrics.pairwise import cosine_similarity
 
 from engine.models.node import Node
@@ -11,12 +11,11 @@ from engine.models.document import EvidencePath, Chunk
 class TraversalEngine:
     "Traversal algorithms"
     def __init__(
-        self, querying_model: StaticModel,
+        self,
         guided_min_score: float,
         beam_width: int,
         min_entry_score: int,
     ):
-        self.querying_model = querying_model
         self.guided_min_score = guided_min_score
         self.beam_width = beam_width
         self.min_entry_score = min_entry_score
@@ -83,10 +82,11 @@ class TraversalEngine:
     def guided(
         self,
         start_node_id: str,
-        query: str,
+        query_emb: str,
         nodes: dict[str, Node],
         out_edges: dict[str, list[Edge]],
         in_edges: dict[str, list[Edge]],
+        get_embedding: Callable[[str], list[float] | None],
         max_depth: int = 2,
         direction: str = "both",
     ) -> tuple[set[str], list[Edge], list[float]]:
@@ -97,15 +97,14 @@ class TraversalEngine:
         if start_node_id not in nodes:
             return set(), [], []
 
+        q_vec = np.array(query_emb).reshape(1, -1)
+
         # Score a node by query embedding similarity
         def score_node(node_id: str) -> float:
-            node = nodes.get(node_id)
-            if not node:
+            emb = get_embedding(node_id)
+            if not emb:
                 return 0.0
-            text = f"{node.name} {node.description} {node.node_type}"
-            emb = self.querying_model.encode(text).reshape(1, -1)
-            query_emb = self.querying_model.encode(query).reshape(1, -1)
-            return float(cosine_similarity(query_emb, emb)[0][0])
+            return float(cosine_similarity(q_vec, np.array(emb).reshape(1, -1))[0][0])
 
         visited = {start_node_id}
         path_edges = []
@@ -114,7 +113,7 @@ class TraversalEngine:
         # beam = list of (node_id, path_edges_to_here, cumulative_score)
         beam = [(start_node_id, [], score_node(start_node_id))]
 
-        for depth in range(max_depth):
+        for _ in range(max_depth):
             candidates = []
 
             for current_id, edges_so_far, cum_score in beam:
@@ -154,11 +153,14 @@ class TraversalEngine:
     def multi_hop(
         self,
         question: str,
+        query_emb: list[float],
         entry_nodes_with_scores: list[tuple[str, float]],
         nodes: dict[str, Node],
         out_edges: dict[str, list[Edge]],
         in_edges: dict[str, list[Edge]],
         chunks: dict[str, Chunk],
+        get_embedding: Callable[[str], list[float] | None],
+        search_chunks: Callable[[str, int], list[tuple[str, float]]],
         max_depth: int = 2,
         direction: str = "both",
     ) -> EvidencePath:
@@ -174,15 +176,16 @@ class TraversalEngine:
         print("Valid: ", valid_entries)
 
         if not valid_entries:
-            chunk_results = self._search_chunks(question, chunks)
+            chunk_results = search_chunks(question, k=5)
             if chunk_results:
+                avg = sum(s for _, s in chunk_results) / len(chunk_results)
                 return EvidencePath(
                     question=question,
                     entry_nodes=[],
                     visited_nodes=[],
                     traversed_edges=[],
                     source_chunks=[cid for cid, _ in chunk_results],
-                    confidence=round(sum(score for _, score in chunk_results) / len(chunk_results), 4),
+                    confidence=round(avg, 4),
                 )
 
             return EvidencePath(
@@ -201,10 +204,11 @@ class TraversalEngine:
         for start_id in entry_node_ids:
             visited, edges, _ = self.guided(
                 start_node_id=start_id,
-                query=question,
+                query_emb=query_emb,
                 nodes=nodes,
                 out_edges=out_edges,
                 in_edges=in_edges,
+                get_embedding=get_embedding,
                 max_depth=max_depth,
                 direction=direction,
             )
@@ -240,27 +244,3 @@ class TraversalEngine:
             source_chunks=list(all_chunk_ids),
             confidence=round(avg_confidence, 4),
         )
-
-    def _search_chunks(
-        self,
-        query: str,
-        chunks: dict[str, Chunk],
-        k: int = 5,
-    ) -> list[tuple[str, float]]:
-        if not chunks:
-            return []
-
-        query_emb = self.querying_model.encode(query).reshape(1, -1)
-        texts, ids = [], []
-        for cid, chunk in chunks.items():
-            texts.append(chunk.text)
-            ids.append(cid)
-
-        if not texts:
-            return []
-
-        embs = self.querying_model.encode(texts)
-        sims = cosine_similarity(query_emb, np.vstack(embs))[0]
-        actual_k = min(k, len(ids))
-        top_indices = sims.argsort()[::-1][:actual_k]
-        return [(ids[idx], float(sims[idx])) for idx in top_indices]

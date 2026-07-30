@@ -65,7 +65,7 @@ class IngestionPipeline:
 
             # 3. Register document
             chunk_ids = [str(uuid.uuid4()) for _ in chunk_texts]
-            doc_id = self.kg.register_document(file_path, file_name, chunk_ids)
+            doc_id = self.kg.register_document(file_path, file_name)
             if doc_id is None:
                 return {
                     "success": True,

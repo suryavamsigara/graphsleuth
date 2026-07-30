@@ -1,7 +1,7 @@
 from typing import Protocol
 
 class VectorStore(Protocol):
-    def upsert_node_embeddings(self, node_id: str, embedding: list[float]) -> None:
+    def upsert_node_embedding(self, node_id: str, embedding: list[float]) -> None:
         ...
 
     def upsert_chunk_embedding(self, chunk_id: str, embedding: list[float]) -> None:

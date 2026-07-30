@@ -1,24 +1,17 @@
 """
 Knowledge Graph Core + Persistence + Evidence Tracking
-
-It handles:
-  - In-memory graph operations (BFS traversal, beam search, metrics)
-  - SQLite persistence (auto-save on every mutation)
-  - Embedding-based node retrieval
-  - Evidence tracking (provenance for every answer)
 """
 
 
 import json
 import hashlib
-import numpy as np
 from pathlib import Path
 from datetime import datetime, timezone
-from sklearn.metrics.pairwise import cosine_similarity
-from model2vec import StaticModel
 from collections import defaultdict
 
 from engine.ports.graph_store import GraphStore
+from engine.ports.vector_store import VectorStore
+from engine.embeddings.encoder import EmbeddingEncoder
 from engine.models.node import Node
 from engine.models.edge import Edge
 from engine.models.document import Chunk, Document, EvidencePath
@@ -35,23 +28,22 @@ class KnowledgeGraph:
     def __init__(
         self,
         store: GraphStore,
-        embedding_model: StaticModel,
-        querying_model: StaticModel,
+        vector_store: VectorStore,
+        encoder: EmbeddingEncoder,
         dedup_threshold: float = 0.92,
         min_entry_score: float = 0.35,
         guided_traversal_min_score: float = 0.20,
         beam_width: int = 3,
     ):
         self.store = store
+        self.vector_store = vector_store
+        self.encoder = encoder
         self.dedup_threshold = dedup_threshold
-        self.embedding_model = embedding_model
-        self.querying_model = querying_model
         self.min_entry_score = min_entry_score
         self.guided_traversal_min_score = guided_traversal_min_score
         self.beam_width = beam_width
 
         self.traversal = TraversalEngine(
-            querying_model=querying_model,
             guided_min_score=self.guided_traversal_min_score,
             beam_width=self.beam_width,
             min_entry_score=self.min_entry_score,
@@ -69,9 +61,10 @@ class KnowledgeGraph:
         self.in_edges: dict[str, list[Edge]] = defaultdict(list)
         self._load_edges_into_cache()
 
-        self.querying_matrix: np.ndarray | None = None
-        self.querying_ids: list[str] = []
-        self._rebuild_query_matrix()
+        # self.querying_matrix: np.ndarray | None = None
+        # self.querying_ids: list[str] = []
+        # self._rebuild_query_matrix()
+        self._embedding_cache: dict[str, list[float]] = {}
 
     def _load_edges_into_cache(self):
         """Load all edges from SQLite into directional caches."""
@@ -80,35 +73,6 @@ class KnowledgeGraph:
         for edge in self.store.load_edges():
             self.out_edges[edge.source_id].append(edge)
             self.in_edges[edge.target_id].append(edge)
-
-    def _rebuild_query_matrix(self):
-        """Rebuild the querying embedding matrix from all nodes."""
-        if not self.nodes:
-            self.querying_matrix = None
-            self.querying_ids = []
-            return
-
-        texts = []
-        ids = []
-        for node_id, node in self.nodes.items():
-            texts.append(f"{node.name} {node.description}".strip())
-            ids.append(node_id)
-
-        embeddings = self.querying_model.encode(texts)
-        self.querying_matrix = np.vstack(embeddings)
-        self.querying_ids = ids
-
-    def _add_to_query_matrix(self, node: Node):
-        """Incrementally add a single node's embedding to the matrix."""
-        text = f"{node.name} {node.description}".strip()
-        emb = self.querying_model.encode(text).reshape(1, -1)
-
-        if self.querying_matrix is None:
-            self.querying_matrix = emb
-            self.querying_ids = [node.id]
-        else:
-            self.querying_matrix = np.vstack((self.querying_matrix, emb))
-            self.querying_ids.append(node.id)
 
     # ------------------------------------------
     # Document operations
@@ -129,7 +93,7 @@ class KnowledgeGraph:
         except FileNotFoundError:
             raise FileNotFoundError(f"Could not calculate checksum. File missing: {file_path}")
     
-    def register_document(self, file_path: str, file_name: str, chunk_ids: list[str]) -> str | None:
+    def register_document(self, file_path: str, file_name: str) -> str | None:
         """
         Calculates file checksum, verifies duplicates, and registers the doc.
         """
@@ -142,7 +106,6 @@ class KnowledgeGraph:
         new_doc = Document(
             path=file_path,
             name=file_name,
-            chunks=chunk_ids,
             checksum=checksum,
             ingested_at=datetime.now(timezone.utc).isoformat()
         )
@@ -187,7 +150,10 @@ class KnowledgeGraph:
         """
         self.nodes[node.id] = node
         self.store.save_node(node)
-        self._add_to_query_matrix(node)
+        text = f"{node.name} {node.description}".strip()
+        emb = self.encoder.encode_single(text)
+        self.vector_store.upsert_node_embedding(node.id, emb)
+        self._embedding_cache[node.id] = emb
         return node.id
 
     def get_node(self, node_id: str) -> Node | None:
@@ -214,6 +180,7 @@ class KnowledgeGraph:
             return
         self.store.delete_node(node_id)
         del self.nodes[node_id]
+        self._embedding_cache.pop(node_id, None)
 
         # Remove from adjacency caches
         self.out_edges.pop(node_id, None)
@@ -222,9 +189,6 @@ class KnowledgeGraph:
             self.out_edges[src] = [e for e in edges if e.target_id != node_id]
         for tgt, edges in self.in_edges.items():
             self.in_edges[tgt] = [e for e in edges if e.source_id != node_id]
-
-        # Will optimize later
-        self._rebuild_query_matrix()
 
     # ------------------------------------------
     # Edge operations
@@ -278,7 +242,7 @@ class KnowledgeGraph:
         return False
 
     # ------------------------------------------------------------------
-    # Retrieval: entry point search
+    # Retrieval: entry point search (via pg vector)
     # ------------------------------------------------------------------
     
     def get_top_k_nodes(self, query: str, k: int = 5) -> list[tuple[str, float]]:
@@ -286,16 +250,20 @@ class KnowledgeGraph:
         Find the k most semantically similar nodes to the query.
         Returns list of (node_id, similarity_score) tuples, sorted descending.
         """
-        if self.querying_matrix is None or len(self.querying_matrix) == 0:
-            return []
-        
-        query_emb = self.querying_model.encode(query).reshape(1, -1)
-        sims= cosine_similarity(query_emb, self.querying_matrix)[0]
-        
-        actual_k = min(k, len(self.querying_ids))
-        top_k_indices = sims.argsort()[::-1][:actual_k]
-        return [(self.querying_ids[idx], float(sims[idx])) for idx in top_k_indices]
+        query_emb = self.encoder.encode_single(query)
+        return self.vector_store.search_nodes(query_emb, k=k)
 
+    def search_chunks(self, query: str, k: int = 5) -> list[tuple[str, float]]:
+        query_emb = self.encoder.encode_single(query)
+        return self.vector_store.search_chunks(query_emb, k=k)
+
+    def _get_node_embedding(self, node_id: str) -> list[float] | None:
+        if node_id in self._embedding_cache:
+            return self._embedding_cache[node_id]
+        emb = self.vector_store.get_node_embedding(node_id)
+        if emb:
+            self._embedding_cache[node_id] = emb
+        return emb
 
     # ------------------------------------------------------------------
     # Traversal
@@ -328,15 +296,15 @@ class KnowledgeGraph:
         Beam search traversal guided by query relevance.
         At each hop, only keep top-k most relevant neighbors.
         """
-        if start_node_id not in self.nodes:
-            return set(), [], []
+        query_emb = self.encoder.encode_single(query)
 
         return self.traversal.guided(
             start_node_id=start_node_id,
-            query=query,
+            query_emb=query_emb,
             nodes=self.nodes,
             out_edges=self.out_edges,
             in_edges=self.in_edges,
+            get_embedding=self._get_node_embedding,
             max_depth=max_depth,
             direction=direction,
         )
@@ -351,15 +319,19 @@ class KnowledgeGraph:
         """
         Delegate to TraversalEngine, passing graph state.
         """
+        query_emb = self.encoder.encode_single(question)
         entry_nodes = self.get_top_k_nodes(question, k=top_k)
 
         return self.traversal.multi_hop(
             question=question,
+            query_emb=query_emb,
             entry_nodes_with_scores=entry_nodes,
             nodes=self.nodes,
             out_edges=self.out_edges,
             in_edges=self.in_edges,
             chunks=self.chunks,
+            get_embedding=self._get_node_embedding,
+            search_chunks=lambda q, k: self.search_chunks(q, k),
             max_depth=max_depth,
             direction=direction,
         )

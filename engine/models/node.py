@@ -21,19 +21,27 @@ class Node:
         return {
             "id": self.id,
             "node_type": self.node_type,
-            "aliases": json.dumps(self.aliases),
+            "aliases": self.aliases,
             "description": self.description,
-            "source_chunk_ids": json.dumps(self.source_chunk_ids),
+            "source_chunk_ids": self.source_chunk_ids,
             "created_at": self.created_at,
         }
 
     @classmethod
     def from_dict(cls, d: dict) -> "Node":
+        aliases = d["aliases"]
+        if isinstance(aliases, str):
+            aliases = json.loads(aliases)
+
+        source_chunk_ids = d["source_chunk_ids"]
+        if isinstance(source_chunk_ids, str):
+            source_chunk_ids = json.loads(source_chunk_ids)
+
         return cls(
             id=d["id"],
             node_type=d["node_type"],
-            aliases=json.loads(d["aliases"]),
+            aliases=aliases,
             description=d["description"],
-            source_chunk_ids=json.loads(d["source_chunk_ids"]),
+            source_chunk_ids=source_chunk_ids,
             created_at=d["created_at"],
         )

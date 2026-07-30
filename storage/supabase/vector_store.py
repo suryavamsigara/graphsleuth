@@ -5,7 +5,7 @@ class SupabaseVectorStore(VectorStore):
     def __init__(self, client: Client):
         self.client = client
 
-    def upsert_node_embeddings(self, node_id: str, embedding: list[float]):
+    def upsert_node_embedding(self, node_id: str, embedding: list[float]):
         self.client.table("nodes").update({"embedding": embedding}).eq("id", node_id).execute()
 
     def upsert_chunk_embedding(self, chunk_id: str, embedding: list[float]) -> None:

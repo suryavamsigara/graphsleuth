@@ -4,8 +4,6 @@ CREATE TABLE IF NOT EXISTS documents (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     path TEXT NOT NULL,
     name TEXT NOT NULL,
-    chunks_count INTEGER NOT NULL DEFAULT 0,
-    chunks JSONB NOT NULL DEFAULT '[]',
     checksum TEXT UNIQUE NOT NULL,
     ingested_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -99,7 +97,7 @@ BEGIN
     WHERE nodes.embedding IS NOT NULL
         AND 1 - (nodes.embedding <=> query_embedding) > match_threshold
     ORDER BY nodes.embedding <=> query_embedding
-    LIMIT match_count
+    LIMIT match_count;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -123,6 +121,6 @@ BEGIN
     WHERE chunks.embedding IS NOT NULL
         AND 1 - (chunks.embedding <=> query_embedding) > match_threshold
     ORDER BY chunks.embedding <=> query_embedding
-    LIMIT match_count
+    LIMIT match_count;
 END;
 $$ LANGUAGE plpgsql
