@@ -37,6 +37,7 @@ class PostgresGraphStore(GraphStore):
                 (
                     node.id,
                     node.node_type,
+                    json.dumps(list(node.aliases)),
                     node.description,
                     json.dumps(list(node.source_chunk_ids)),
                     node.created_at,
@@ -193,6 +194,14 @@ class PostgresGraphStore(GraphStore):
 
     def save_evidence(self, ev: EvidencePath) -> str:
         import json
+        from datetime import datetime
+
+        class DateTimeEncoder(json.JSONEncoder):
+            def default(self, obj):
+                if isinstance(obj, datetime):
+                    return obj.isoformat()
+                return super().default(obj)
+
         d = ev.to_dict()
         
         with self._conn.transaction():
@@ -216,10 +225,10 @@ class PostgresGraphStore(GraphStore):
                 (
                     str(d["id"]),
                     d["question"],
-                    json.dumps(d.get("entry_nodes") or []),
-                    json.dumps(d.get("visited_nodes") or []),
-                    json.dumps(d.get("traversed_edges") or []),
-                    json.dumps(d.get("source_chunks") or []),
+                    json.dumps(d.get("entry_nodes") or [], cls=DateTimeEncoder),
+                    json.dumps(d.get("visited_nodes") or [], cls=DateTimeEncoder),
+                    json.dumps(d.get("traversed_edges") or [], cls=DateTimeEncoder),
+                    json.dumps(d.get("source_chunks") or [], cls=DateTimeEncoder),
                     d.get("answer"),
                     d.get("confidence"),
                     d.get("created_at"),

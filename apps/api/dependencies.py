@@ -10,8 +10,9 @@ from engine.extraction.extractor import EntityExtractor
 from engine.agent.reasoner import GraphReasoner
 from engine.ingestion.pipeline import IngestionPipeline
 from engine.embeddings.encoder import LocalEncoder, EmbeddingEncoder
-from storage.postgres.graph_store import PostgresGraphStore
-from storage.postgres.vector_store import PostgresVectorStore
+from storage.supabase.graph_store import SupabaseGraphStore
+from storage.supabase.vector_store import SupabaseVectorStore
+from storage.supabase.file_store import SupabaseFileStore
 
 load_dotenv()
 
@@ -23,31 +24,28 @@ def get_supabase_client() -> Client:
     key = os.getenv("SUPABASE_SERVICE_KEY")
     return create_client(url, key)
 
-# @lru_cache
-# def get_graph_store() -> SupabaseGraphStore:
-#     return SupabaseGraphStore(client=get_supabase_client())
+@lru_cache
+def get_graph_store() -> SupabaseGraphStore:
+    return SupabaseGraphStore(client=get_supabase_client())
 
-
-# @lru_cache
-# def get_vector_store() -> SupabaseVectorStore:
-#     return SupabaseVectorStore(client=get_supabase_client())
-
-
-# @lru_cache
-# def get_file_store() -> SupabaseFileStore:
-#     return SupabaseFileStore(client=get_supabase_client(), bucket="documents")
 
 @lru_cache
-def get_graph_store() -> PostgresGraphStore:
-    return PostgresGraphStore(_conn)
+def get_vector_store() -> SupabaseVectorStore:
+    return SupabaseVectorStore(client=get_supabase_client())
+
 
 @lru_cache
-def get_vector_store() -> PostgresVectorStore:
-    return PostgresVectorStore(_conn)
+def get_file_store() -> SupabaseFileStore:
+    return SupabaseFileStore(client=get_supabase_client(), bucket="documents")
+
 
 @lru_cache
 def get_encoder() -> EmbeddingEncoder:
     return LocalEncoder(model_name="MinishLab/potion-retrieval-32M", dimensionality=384)
+
+@lru_cache
+def get_file_store() -> SupabaseFileStore:
+    return SupabaseFileStore(client=get_supabase_client(), bucket="documents")
 
 @lru_cache
 def get_knowledge_graph() -> KnowledgeGraph:
@@ -85,4 +83,3 @@ def get_ingestion_pipeline() -> IngestionPipeline:
         kg=get_knowledge_graph(),
         extractor=get_extractor(),
     )
-

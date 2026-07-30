@@ -1,11 +1,13 @@
 import json
 import psycopg
+from pgvector.psycopg import register_vector
 
 from engine.ports.vector_store import VectorStore
 
 class PostgresVectorStore(VectorStore):
     def __init__(self, conn: psycopg.Connection):
         self.conn = conn
+        register_vector(self.conn)
 
     def upsert_node_embedding(self, node_id: str, embedding: list[float]) -> None:
         self.conn.execute(
@@ -39,9 +41,13 @@ class PostgresVectorStore(VectorStore):
     def get_node_embedding(self, node_id: str) -> list[float] | None:
         row = self.conn.execute("SELECT embedding FROM nodes WHERE id = %s", (node_id,)).fetchone()
 
-        return row["embedding"] if row and row["embedding"] is not None else None
+        if row and row["embedding"] is not None:
+            return row["embedding"].to_numpy().tolist()
+        return None
 
     def get_chunk_embedding(self, chunk_id: str) -> list[float] | None:
         row = self.conn.execute("SELECT embedding FROM chunks WHERE id = %s", (chunk_id,)).fetchone()
         
-        return row["embedding"] if row and row["embedding"] is not None else None
+        if row and row["embedding"] is not None:
+            return row["embedding"].to_numpy().tolist()
+        return None
