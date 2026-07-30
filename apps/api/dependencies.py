@@ -3,7 +3,7 @@ from dotenv import load_dotenv
 
 from engine.graph.knowledge_graph import KnowledgeGraph
 from engine.agent.reasoner import GraphReasoner
-from storage.graph_store import PostgresGraphStore
+from storage.postgres.graph_store import PostgresGraphStore
 from model2vec import StaticModel
 
 load_dotenv()

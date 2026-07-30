@@ -50,7 +50,12 @@ class KnowledgeGraph:
         self.guided_traversal_min_score = guided_traversal_min_score
         self.beam_width = beam_width
 
-        self.traversal = TraversalEngine(querying_model=querying_model)
+        self.traversal = TraversalEngine(
+            querying_model=querying_model,
+            guided_min_score=self.guided_traversal_min_score,
+            beam_width=self.beam_width,
+            min_entry_score=self.min_entry_score,
+        )
 
         # in memory caches (loaded from store on init)
         self.nodes: dict[str, Node] = self.store.load_nodes()
@@ -296,14 +301,7 @@ class KnowledgeGraph:
     # Traversal
     # ------------------------------------------------------------------
 
-    def bfs_traversal(
-        self,
-        start_node_id: str,
-        max_depth: int = 2,
-        direction: str = "both", # out, in, both
-        relation_filter: str | None = None,
-        node_type_filter: str | None = None,
-    ) -> tuple[set[str], list[Edge]]:
+    def bfs_traversal(self, start_node_id: str, **kwargs) -> tuple[set[str], list[Edge]]:
         """
         BFS traversal from a starting node.
 
@@ -316,10 +314,7 @@ class KnowledgeGraph:
             nodes=self.nodes,
             out_edges=self.out_edges,
             in_edges=self.in_edges,
-            max_depth=max_depth,
-            direction=direction,
-            relation_filter=relation_filter,
-            node_type_filter=node_type_filter,
+            **kwargs,
         )
 
     def guided_traversal(
@@ -327,9 +322,7 @@ class KnowledgeGraph:
         start_node_id: str,
         query: str,
         max_depth: int = 2,
-        beam_width: int = 3,
         direction: str = "both",
-        guided_min_score: float | None = None,
     ) -> tuple[set[str], list[Edge], list[float]]:
         """
         Beam search traversal guided by query relevance.
@@ -338,8 +331,6 @@ class KnowledgeGraph:
         if start_node_id not in self.nodes:
             return set(), [], []
 
-        min_score = guided_min_score if guided_min_score is not None else self.guided_traversal_min_score
-
         return self.traversal.guided(
             start_node_id=start_node_id,
             query=query,
@@ -347,9 +338,7 @@ class KnowledgeGraph:
             out_edges=self.out_edges,
             in_edges=self.in_edges,
             max_depth=max_depth,
-            beam_width=beam_width,
             direction=direction,
-            min_score=min_score,
         )
     
     def multi_hop_query(
@@ -358,15 +347,10 @@ class KnowledgeGraph:
         top_k: int = 3,
         max_depth: int = 2,
         direction: str = "both",
-        min_entry_score: float | None = None,
-        beam_width: int | None = None,
-        guided_traversal_min_score: float | None = None,
     ) -> EvidencePath:
         """
         Delegate to TraversalEngine, passing graph state.
         """
-        min_entry = min_entry_score if min_entry_score is not None else self.min_entry_score
-        guided_min = guided_traversal_min_score if guided_traversal_min_score is not None else self.guided_traversal_min_score
         entry_nodes = self.get_top_k_nodes(question, k=top_k)
 
         return self.traversal.multi_hop(
@@ -376,11 +360,8 @@ class KnowledgeGraph:
             out_edges=self.out_edges,
             in_edges=self.in_edges,
             chunks=self.chunks,
-            min_entry_score=min_entry,
             max_depth=max_depth,
             direction=direction,
-            beam_width=beam_width,
-            guided_min_score=guided_min,
         )
 
     # ---------------------------------------------------------------------------

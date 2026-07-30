@@ -10,8 +10,16 @@ from engine.models.document import EvidencePath, Chunk
 
 class TraversalEngine:
     "Traversal algorithms"
-    def __init__(self, querying_model):
-        self.querying_model: StaticModel = querying_model
+    def __init__(
+        self, querying_model: StaticModel,
+        guided_min_score: float,
+        beam_width: int,
+        min_entry_score: int,
+    ):
+        self.querying_model = querying_model
+        self.guided_min_score = guided_min_score
+        self.beam_width = beam_width
+        self.min_entry_score = min_entry_score
 
     def bfs(
         self,
@@ -80,9 +88,7 @@ class TraversalEngine:
         out_edges: dict[str, list[Edge]],
         in_edges: dict[str, list[Edge]],
         max_depth: int = 2,
-        beam_width: int = 3,
         direction: str = "both",
-        min_score: float = 0.20,
     ) -> tuple[set[str], list[Edge], list[float]]:
         """
         Beam search traversal guided by query relevance.
@@ -126,7 +132,7 @@ class TraversalEngine:
                         continue
 
                     neighbor_score = score_node(neighbor_id)
-                    if neighbor_score < min_score:
+                    if neighbor_score < self.guided_min_score:
                         continue
 
                     new_edges = edges_so_far + [edge]
@@ -139,7 +145,7 @@ class TraversalEngine:
 
             # Keep top beam_width candidates
             candidates.sort(key=lambda x: x[2], reverse=True)
-            beam = candidates[:beam_width]
+            beam = candidates[:self.beam_width]
             path_edges.extend([e for _, edges, _ in beam for e in edges])
             scores.extend([s for _, _, s in beam])
         return visited, path_edges, scores
@@ -155,9 +161,6 @@ class TraversalEngine:
         chunks: dict[str, Chunk],
         max_depth: int = 2,
         direction: str = "both",
-        min_entry_score: float = 0.35,
-        beam_width: int = 3,
-        guided_min_score: float = 0.20,
     ) -> EvidencePath:
         """
         The main query interface.
@@ -167,7 +170,7 @@ class TraversalEngine:
         4. Return an EvidencePath
         """
 
-        valid_entries = [(nid, score) for nid, score in entry_nodes_with_scores if score >= min_entry_score]
+        valid_entries = [(nid, score) for nid, score in entry_nodes_with_scores if score >= self.min_entry_score]
         print("Valid: ", valid_entries)
 
         if not valid_entries:
@@ -204,8 +207,6 @@ class TraversalEngine:
                 in_edges=in_edges,
                 max_depth=max_depth,
                 direction=direction,
-                beam_width=beam_width,
-                min_score=guided_min_score,
             )
             all_visited.update(visited)
             all_edges.extend(edges)
