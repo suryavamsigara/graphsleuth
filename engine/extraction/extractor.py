@@ -232,8 +232,6 @@ class EntityExtractor:
                         return node_id
         
         # Step 3: Embedding similarity
-        if self.embedding_model is None:
-            return None
 
         candidate_text = f"{name} {description}".strip()
         candidate_emb = np.array(self.encoder.encode_single(candidate_text)).reshape(1, -1)

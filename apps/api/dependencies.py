@@ -43,9 +43,6 @@ def get_file_store() -> SupabaseFileStore:
 def get_encoder() -> EmbeddingEncoder:
     return LocalEncoder(model_name="MinishLab/potion-retrieval-32M", dimensionality=384)
 
-@lru_cache
-def get_file_store() -> SupabaseFileStore:
-    return SupabaseFileStore(client=get_supabase_client(), bucket="documents")
 
 @lru_cache
 def get_knowledge_graph() -> KnowledgeGraph:

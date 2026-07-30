@@ -14,7 +14,7 @@ class TraversalEngine:
         self,
         guided_min_score: float,
         beam_width: int,
-        min_entry_score: int,
+        min_entry_score: float,
     ):
         self.guided_min_score = guided_min_score
         self.beam_width = beam_width
@@ -82,7 +82,7 @@ class TraversalEngine:
     def guided(
         self,
         start_node_id: str,
-        query_emb: str,
+        query_emb: list[float],
         nodes: dict[str, Node],
         out_edges: dict[str, list[Edge]],
         in_edges: dict[str, list[Edge]],
@@ -158,7 +158,6 @@ class TraversalEngine:
         nodes: dict[str, Node],
         out_edges: dict[str, list[Edge]],
         in_edges: dict[str, list[Edge]],
-        chunks: dict[str, Chunk],
         get_embedding: Callable[[str], list[float] | None],
         search_chunks: Callable[[str, int], list[tuple[str, float]]],
         max_depth: int = 2,
