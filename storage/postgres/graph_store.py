@@ -22,26 +22,27 @@ class PostgresGraphStore(GraphStore):
         self._conn.commit()
 
     def save_node(self, node: Node) -> None:
-        self._conn.execute(
-            """
-            INSERT INTO nodes (id, node_type, aliases, description, source_chunk_ids, created_at)
-            VALUES (%s, %s, %s::jsonb, %s, %s::jsonb, %s)
-            ON CONFLICT (id) DO UPDATE SET
-                node_type = EXCLUDED.node_type,
-                aliases = EXCLUDED.aliases,
-                description = EXCLUDED.description,
-                source_chunk_ids = EXCLUDED.source_chunk_ids,
-                created_at = EXCLUDED.created_at
-            """,
-            (
-                node.id,
-                node.node_type,
-                json.dumps(node.aliases),
-                node.description,
-                json.dumps(node.source_chunk_ids),
-                node.created_at,
-            ),
-        )
+        with self._conn.transaction():
+            self._conn.execute(
+                """
+                INSERT INTO nodes (id, node_type, aliases, description, source_chunk_ids, created_at)
+                VALUES (%s, %s, (%s)::jsonb, %s, (%s)::jsonb, %s)
+                ON CONFLICT (id) DO UPDATE SET
+                    node_type = EXCLUDED.node_type,
+                    aliases = EXCLUDED.aliases,
+                    description = EXCLUDED.description,
+                    source_chunk_ids = EXCLUDED.source_chunk_ids,
+                    created_at = EXCLUDED.created_at
+                """,
+                (
+                    node.id,
+                    node.node_type,
+                    node.description,
+                    json.dumps(list(node.source_chunk_ids)),
+                    node.created_at,
+                ),
+            )
+
 
 
     def load_nodes(self) -> list[str, Node]:

@@ -1,0 +1,20 @@
+from supabase import Client
+
+class SupabaseFileStore:
+    def __init__(self, client: Client, bucket: str = "documents"):
+        self.client = client
+        self.bucket = bucket
+
+    def upload(self, local_path: str, storage_path: str) -> str:
+        with open(local_path, "rb") as f:
+            self.client.storage.from_(self.bucket).upload(
+                path=storage_path,
+                file=f,
+                file_options={"content-type": "text/plain"},
+            )
+        return self.client.storage.from_(self.bucket).get_public_url(storage_path)
+
+    def download_to_local(self, storage_path: str, local_path: str) -> None:
+        data = self.client.storage.from_(self.bucket).download(storage_path)
+        with open(local_path, "wb") as f:
+            f.write(data)

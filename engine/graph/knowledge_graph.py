@@ -30,7 +30,6 @@ class KnowledgeGraph:
         store: GraphStore,
         vector_store: VectorStore,
         encoder: EmbeddingEncoder,
-        dedup_threshold: float = 0.92,
         min_entry_score: float = 0.35,
         guided_traversal_min_score: float = 0.20,
         beam_width: int = 3,
@@ -38,7 +37,6 @@ class KnowledgeGraph:
         self.store = store
         self.vector_store = vector_store
         self.encoder = encoder
-        self.dedup_threshold = dedup_threshold
         self.min_entry_score = min_entry_score
         self.guided_traversal_min_score = guided_traversal_min_score
         self.beam_width = beam_width
