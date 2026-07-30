@@ -12,4 +12,5 @@ dependencies = [
     "pypdf[crypto]>=6.14.2",
     "python-dotenv>=1.2.2",
     "scikit-learn>=1.8.0",
+    "supabase>=2.31.0",
 ]
