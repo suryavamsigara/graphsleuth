@@ -327,7 +327,6 @@ class KnowledgeGraph:
             nodes=self.nodes,
             out_edges=self.out_edges,
             in_edges=self.in_edges,
-            chunks=self.chunks,
             get_embedding=self._get_node_embedding,
             search_chunks=lambda q, k: self.search_chunks(q, k),
             max_depth=max_depth,

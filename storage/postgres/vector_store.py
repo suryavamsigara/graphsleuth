@@ -51,3 +51,6 @@ class PostgresVectorStore(VectorStore):
         if row and row["embedding"] is not None:
             return row["embedding"].to_numpy().tolist()
         return None
+
+    def close(self) -> None:
+        self.conn.close()

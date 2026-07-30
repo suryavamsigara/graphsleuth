@@ -1,15 +1,15 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
-from apps.api.dependencies import get_supabase_client
+from apps.api.core.async_engine import AsyncEngine
+from apps.api.dependencies import get_engine
 
-router = APIRouter()
+router = APIRouter(prefix="/health", tags=["health"])
+
 
 @router.get("/")
-def health():
-    client = get_supabase_client()
-    resp = client.table("nodes").select("id", count="exact").limit(1).execute()
+async def health(engine: AsyncEngine = Depends(get_engine)):
+    metrics = await engine.get_metrics()
     return {
         "status": "ok",
-        "supabase_connected": True,
-        "nodes_in_db": resp.count,
+        "graph": metrics,
     }

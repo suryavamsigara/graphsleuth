@@ -1,34 +1,104 @@
-import tempfile
+import os
 import uuid
+import tempfile
 from pathlib import Path
 
-from fastapi import APIRouter, UploadFile, File, BackgroundTasks
+from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
+from fastapi.responses import JSONResponse
 
-from apps.api.dependencies import get_file_store, get_ingestion_pipeline
+from apps.api.core.async_engine import AsyncEngine
+from apps.api.dependencies import get_engine
+from apps.api.api.schemas.documents import DocumentUploadResponse, DocumentListItem
 
-router = APIRouter()
-
-
-@router.post("/upload")
-async def upload_document(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
-    file_store = get_file_store()
-    pipeline = get_ingestion_pipeline()
-
-    suffix = Path(file.filename).suffix
-    local_path = f"/tmp/{uuid.uuid4()}{suffix}"
-
-    with open(local_path, "wb") as f:
-        f.write(await file.read())
-
-    storage_path = f"uploads/{uuid.uuid4()}{suffix}"
-    public_url = file_store.upload(local_path, storage_path)
-
-    background_tasks.add_task(_ingest, local_path, file.filename)
-
-    return {"document_id": None, "storage_path": storage_path, "url": public_url}
+router = APIRouter(prefix="/documents", tags=["documents"])
 
 
-def _ingest(local_path: str, file_name: str):
-    pipeline = get_ingestion_pipeline()
-    result = pipeline.ingest_file(local_path, file_name)
-    print(f"Ingestion result: {result}")
+@router.post("/upload", response_model=DocumentUploadResponse)
+async def upload_document(
+    file: UploadFile = File(...),
+    engine: AsyncEngine = Depends(get_engine),
+):
+    """Upload a file, ingest into graph, archive to Supabase storage."""
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No filename provided")
+
+    # Validate extension
+    suffix = Path(file.filename).suffix.lower()
+    supported = {".txt", ".md", ".py", ".pdf"}
+    if suffix not in supported:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type: {suffix}. Supported: {supported}",
+        )
+
+    # Save to temp file
+    temp_dir = tempfile.mkdtemp(prefix="graphsleuth_")
+    temp_path = os.path.join(temp_dir, f"{uuid.uuid4()}{suffix}")
+
+    try:
+        with open(temp_path, "wb") as f:
+            content = await file.read()
+            f.write(content)
+
+        # Ingest into knowledge graph
+        result = await engine.ingest_file(temp_path, file.filename)
+
+        # Archive original to Supabase if ingestion succeeded
+        if result.get("success") and result.get("document_id"):
+            file_store = engine.file_store
+            storage_path = f"documents/{result['document_id']}/{file.filename}"
+            await file_store.upload(temp_path, storage_path)
+
+        return DocumentUploadResponse(
+            success=result.get("success", False),
+            document_id=result.get("document_id"),
+            file_name=file.filename,
+            chunks_processed=result.get("chunks_processed", 0),
+            nodes_created=result.get("nodes_created", 0),
+            edges_created=result.get("edges_created", 0),
+            error=result.get("error"),
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    finally:
+        # Cleanup temp
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        if os.path.exists(temp_dir):
+            os.rmdir(temp_dir)
+
+
+@router.get("/", response_model=list[DocumentListItem])
+async def list_documents(engine: AsyncEngine = Depends(get_engine)):
+    docs = await engine.list_documents()
+    return [
+        DocumentListItem(
+            id=d.id,
+            name=d.name,
+            path=d.path,
+            ingested_at=d.ingested_at,
+        )
+        for d in docs
+    ]
+
+
+@router.get("/{doc_id}")
+async def get_document(doc_id: str, engine: AsyncEngine = Depends(get_engine)):
+    doc = await engine.get_document(doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return {
+        "id": doc.id,
+        "name": doc.name,
+        "path": doc.path,
+        "checksum": doc.checksum,
+        "ingested_at": doc.ingested_at,
+    }
+
+
+@router.delete("/{doc_id}")
+async def delete_document(doc_id: str, engine: AsyncEngine = Depends(get_engine)):
+    # Will cascade delete in graph_store
+    raise HTTPException(status_code=501, detail="Not yet implemented")

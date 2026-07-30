@@ -1,21 +1,43 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
-from apps.api.dependencies import get_knowledge_graph
 from apps.api.api.routes import documents, query, graph, health
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    kg = get_knowledge_graph()
-    print(f"Graph ready: {kg.get_metrics()}")
+    from apps.api.dependencies import get_engine
+    _ = get_engine()
     yield
+    # Shutdown: close stores
+    from apps.api.dependencies import get_graph_store, get_vector_store
+    get_graph_store().close()
+    get_vector_store().close()
 
 
-app = FastAPI(title="GraphSleuth API", lifespan=lifespan)
+app = FastAPI(
+    title="GraphSleuth API",
+    description="Knowledge graph RAG",
+    version="0.1.0",
+    lifespan=lifespan,
+)
 
-app.include_router(documents.router, prefix="/documents", tags=["documents"])
-app.include_router(query.router, prefix="/query", tags=["query"])
-app.include_router(graph.router, prefix="/graph", tags=["graph"])
-app.include_router(health.router, prefix="/health", tags=["health"])
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(health.router)
+app.include_router(documents.router)
+app.include_router(query.router)
+app.include_router(graph.router)
+
+
+@app.get("/")
+async def root():
+    return {"message": "GraphSleuth API", "docs": "/docs"}
