@@ -1,3 +1,4 @@
+import json
 from supabase import Client
 from engine.ports.vector_store import VectorStore
 
@@ -31,10 +32,17 @@ class SupabaseVectorStore(VectorStore):
         resp = self.client.table("nodes").select("embedding").eq("id", node_id).execute()
         if not resp.data:
             return None
-        return resp.data[0]["embedding"]
+        raw_emb = resp.data[0]["embedding"]
+        if isinstance(raw_emb, str):
+            return json.loads(raw_emb)
+        return list(raw_emb)
 
     def get_chunk_embedding(self, chunk_id: str) -> list[float] | None:
         resp = self.client.table("chunks").select("embedding").eq("id", chunk_id).execute()
         if not resp.data:
             return None
-        return resp.data[0]["embedding"]
+        raw_emb = resp.data[0]["embedding"]
+        
+        if isinstance(raw_emb, str):
+            return json.loads(raw_emb)
+        return list(raw_emb)
