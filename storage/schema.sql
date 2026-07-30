@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS nodes (
     aliases JSONB NOT NULL DEFAULT '[]',
     description TEXT,
     source_chunk_ids JSONB NOT NULL DEFAULT '[]',
-    embedding VECTOR(128),
+    embedding VECTOR(384),
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -79,7 +79,7 @@ ON nodes (node_type);
 
 -- pgvector similarity search called via RPC
 CREATE OR REPLACE FUNCTION match_nodes (
-    query_embedding VECTOR(128),
+    query_embedding VECTOR(384),
     match_threshold FLOAT,
     match_count INT
 )

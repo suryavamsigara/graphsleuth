@@ -2,6 +2,8 @@ import os
 import psycopg
 from psycopg.rows import dict_row
 from dotenv import load_dotenv
+from functools import lru_cache
+from supabase import Client, create_client
 
 from engine.graph.knowledge_graph import KnowledgeGraph
 from engine.extraction.extractor import EntityExtractor
@@ -15,16 +17,39 @@ load_dotenv()
 
 _conn = psycopg.connect("postgresql://graphsleuth_user:graphsleuthpassword@localhost:5432/graphsleuth", row_factory=dict_row)
 
+@lru_cache
+def get_supabase_client() -> Client:
+    url = os.getenv("SUPABASE_URL")
+    key = os.getenv("SUPABASE_SERVICE_KEY")
+    return create_client(url, key)
 
+# @lru_cache
+# def get_graph_store() -> SupabaseGraphStore:
+#     return SupabaseGraphStore(client=get_supabase_client())
+
+
+# @lru_cache
+# def get_vector_store() -> SupabaseVectorStore:
+#     return SupabaseVectorStore(client=get_supabase_client())
+
+
+# @lru_cache
+# def get_file_store() -> SupabaseFileStore:
+#     return SupabaseFileStore(client=get_supabase_client(), bucket="documents")
+
+@lru_cache
 def get_graph_store() -> PostgresGraphStore:
     return PostgresGraphStore(_conn)
 
+@lru_cache
 def get_vector_store() -> PostgresVectorStore:
     return PostgresVectorStore(_conn)
 
+@lru_cache
 def get_encoder() -> EmbeddingEncoder:
-    return LocalEncoder(dimensionality=384)
+    return LocalEncoder(model_name="MinishLab/potion-retrieval-32M", dimensionality=384)
 
+@lru_cache
 def get_knowledge_graph() -> KnowledgeGraph:
     return KnowledgeGraph(
         store=get_graph_store(),
@@ -35,6 +60,7 @@ def get_knowledge_graph() -> KnowledgeGraph:
         beam_width=int(os.getenv("BEAM_WIDTH", "5")),
     )
 
+@lru_cache
 def get_agent() -> GraphReasoner:
     kg = get_knowledge_graph()
     return GraphReasoner(
@@ -45,6 +71,7 @@ def get_agent() -> GraphReasoner:
         top_k=int(os.getenv("TOP_K", "5")),
     )
 
+@lru_cache
 def get_extractor() -> EntityExtractor:
     return EntityExtractor(
         model_name=os.getenv("LLM_MODEL", "deepseek-v4-flash"),
@@ -52,26 +79,10 @@ def get_extractor() -> EntityExtractor:
         embedding_model=get_encoder(),
     )
 
+@lru_cache
 def get_ingestion_pipeline() -> IngestionPipeline:
     return IngestionPipeline(
         kg=get_knowledge_graph(),
         extractor=get_extractor(),
     )
 
-
-
-
-
-def get_node_encoder() -> EmbeddingEncoder:
-    """128-dim for nodes"""
-    return LocalEncoder(
-        model_name="MinishLab/potion-retrieval-32M",
-        dimensionality=128,
-    )
-
-def get_chunk_encoder() -> EmbeddingEncoder:
-    """384-dim for chunks"""
-    return LocalEncoder(
-        model_name="MinishLab/potion-retrieval-32M",
-        dimensionality=384,
-    )

@@ -88,7 +88,7 @@ class SupabaseGraphStore(GraphStore):
     def save_document(self, doc: Document) -> None:
         self.client.table("documents").upsert({
             "id": doc.id,
-            "storage_path": doc.path,
+            "path": doc.path,
             "name": doc.name,
             "checksum": doc.checksum,
             "ingested_at": doc.ingested_at,
@@ -162,7 +162,7 @@ class SupabaseGraphStore(GraphStore):
     def _row_to_doc(row) -> Document:
         return Document.from_dict({
             "id": row["id"],
-            "path": row["storage_path"],
+            "path": row["path"],
             "name": row["name"],
             "checksum": row["checksum"],
             "ingested_at": row["ingested_at"],
@@ -170,14 +170,4 @@ class SupabaseGraphStore(GraphStore):
 
     @staticmethod
     def _row_to_evidence(row) -> EvidencePath:
-        return EvidencePath(
-            id=row["id"],
-            question=row["question"],
-            entry_nodes=row["entry_nodes"],
-            visited_nodes=row["visited_nodes"],
-            traversed_edges=[Edge.from_dict(e) for e in row["traversed_edges"]],
-            source_chunks=row["source_chunks"],
-            answer=row["answer"],
-            confidence=row["confidence"],
-            created_at=row["created_at"],
-        )
+        return EvidencePath.from_dict(row)
