@@ -8,6 +8,8 @@ from apps.api.api.schemas.graph import (
     GraphNode,
     GraphEdge,
     NodeSearchResponse,
+    NodeEdgeRow,
+    ChunkResponse,
 )
 
 router = APIRouter(prefix="/graph", tags=["graph"])
@@ -34,15 +36,18 @@ async def search_nodes(
     engine: AsyncEngine = Depends(get_engine),
 ):
     results = await engine.search_nodes(q, k)
-    return [
-        NodeSearchResponse(
-            id=nid,
-            name=(await engine.get_node(nid)).name if await engine.get_node(nid) else nid,
-            node_type=(await engine.get_node(nid)).node_type if await engine.get_node(nid) else "UNKNOWN",
-            score=round(score, 4),
+    response = []
+    for nid, score in results:
+        node = await engine.get_node(nid)
+        response.append(
+            NodeSearchResponse(
+                id=nid,
+                name=node.name if node else nid,
+                node_type=node.node_type if node else "UNKNOWN",
+                score=round(score, 4),
+            )
         )
-        for nid, score in results
-    ]
+    return response
 
 
 @router.get("/nodes/{node_id}")
@@ -58,6 +63,45 @@ async def get_node(node_id: str, engine: AsyncEngine = Depends(get_engine)):
         "description": node.description,
         "source_chunk_ids": node.source_chunk_ids,
     }
+
+
+@router.get("/nodes/{node_id}/edges", response_model=list[NodeEdgeRow])
+async def get_node_edges(node_id: str, engine: AsyncEngine = Depends(get_engine)):
+    node = await engine.get_node(node_id)
+    if not node:
+        raise HTTPException(status_code=404, detail="Node not found")
+
+    edges = await engine.get_node_edges(node_id)
+
+    rows: list[NodeEdgeRow] = []
+    name_cache: dict[str, str] = {}
+
+    async def resolve_name(nid: str) -> str:
+        if nid not in name_cache:
+            n = await engine.get_node(nid)
+            name_cache[nid] = n.name if n else nid
+        return name_cache[nid]
+
+    for e in edges:
+        rows.append(
+            NodeEdgeRow(
+                id=e.id,
+                source_id=e.source_id,
+                source_name=await resolve_name(e.source_id),
+                target_id=e.target_id,
+                target_name=await resolve_name(e.target_id),
+                relation=e.relation,
+            )
+        )
+    return rows
+
+
+@router.get("/chunks/{chunk_id}", response_model=ChunkResponse)
+async def get_chunk(chunk_id: str, engine: AsyncEngine = Depends(get_engine)):
+    chunk = await engine.get_chunk(chunk_id)
+    if not chunk:
+        raise HTTPException(status_code=404, detail="Chunk not found")
+    return ChunkResponse(id=chunk.id, text=chunk.text, document_id=chunk.document_id, index=chunk.index)
 
 
 @router.get("/evidence/{evidence_id}")

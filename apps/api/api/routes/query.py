@@ -1,5 +1,4 @@
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import StreamingResponse
 from sse_starlette.sse import EventSourceResponse
 
 from apps.api.core.async_engine import AsyncEngine
@@ -9,9 +8,14 @@ from apps.api.api.schemas.query import QueryRequest
 router = APIRouter(prefix="/query", tags=["query"])
 
 
-async def _stream_answer(engine: AsyncEngine, question: str, top_k: int, max_depth: int):
+async def _stream_answer(engine: AsyncEngine, req: QueryRequest):
     """SSE generator yielding JSON events."""
-    async for event in engine.query_stream(question):
+    async for event in engine.query_stream(
+        req.question,
+        confidence_threshold=req.confidence_threshold,
+        top_k=req.top_k,
+        max_depth=req.max_depth,
+    ):
         yield {"data": event}
 
 
@@ -21,10 +25,7 @@ async def query_stream(
     engine: AsyncEngine = Depends(get_engine),
 ):
     """Stream the agent's reasoning and answer via SSE."""
-    return EventSourceResponse(
-        _stream_answer(engine, req.question, req.top_k, req.max_depth),
-        media_type="text/event-stream",
-    )
+    return EventSourceResponse(_stream_answer(engine, req), media_type="text/event-stream")
 
 
 @router.post("/")
@@ -38,8 +39,14 @@ async def query_sync(
     steps = []
     tokens_used = 0
     latency_ms = 0
+    confidence = 0.0
 
-    async for event in engine.query_stream(req.question):
+    async for event in engine.query_stream(
+        req.question,
+        confidence_threshold=req.confidence_threshold,
+        top_k=req.top_k,
+        max_depth=req.max_depth,
+    ):
         if event.get("type") == "token":
             answer += event.get("token", "")
         elif event.get("type") == "done":
@@ -47,6 +54,7 @@ async def query_sync(
             steps = event.get("steps", [])
             tokens_used = event.get("tokens_used", 0)
             latency_ms = event.get("latency_ms", 0)
+            confidence = event.get("confidence", 0.0)
 
     if not answer:
         raise HTTPException(status_code=404, detail="No answer generated")
@@ -57,4 +65,5 @@ async def query_sync(
         "steps": steps,
         "tokens_used": tokens_used,
         "latency_ms": latency_ms,
+        "confidence": confidence,
     }

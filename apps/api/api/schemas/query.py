@@ -1,12 +1,9 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class QueryRequest(BaseModel):
     question: str
-    top_k: int = 3
-    max_depth: int = 2
+    top_k: int = Field(default=3, ge=1, le=20)
+    max_depth: int = Field(default=2, ge=1, le=5)
+    confidence_threshold: float = Field(default=0.35, ge=0.0, le=1.0)
 
-class QueryResponse(BaseModel):
-    answer: str
-    evidence_id: str | None = None
-    latency_ms: float
