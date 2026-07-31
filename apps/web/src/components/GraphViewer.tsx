@@ -18,23 +18,29 @@ interface GraphEdge {
   label: string;
 }
 
+export interface EvidencePath {
+  nodeIds: string[];
+  edgeIds: string[];
+}
+
 interface GraphViewerProps {
   nodes: GraphNode[];
   edges: GraphEdge[];
   onNodeSelect?: (node: GraphNode | null) => void;
   selectedNodeId?: string | null;
+  evidencePath?: EvidencePath | null; // when set, everything outside it dims ("redacted")
   className?: string;
 }
 
 const NODE_COLORS: Record<string, string> = {
-  PERSON: "#f59e0b",
-  ORGANIZATION: "#3b82f6",
-  LOCATION: "#10b981",
-  EVENT: "#ef4444",
-  PRODUCT: "#8b5cf6",
-  CONCEPT: "#06b6d4",
-  REGULATION: "#f97316",
-  OTHER: "#6b7280",
+  PERSON: "#f2a33e",
+  ORGANIZATION: "#6c8ef5",
+  LOCATION: "#5fd0a7",
+  EVENT: "#ef5b4e",
+  PRODUCT: "#b98cf2",
+  CONCEPT: "#4fc3d9",
+  REGULATION: "#e08a3c",
+  OTHER: "#7d818c",
 };
 
 export default function GraphViewer({
@@ -42,13 +48,13 @@ export default function GraphViewer({
   edges,
   onNodeSelect,
   selectedNodeId,
+  evidencePath,
   className,
 }: GraphViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<cytoscape.Core | null>(null);
   const [isReady, setIsReady] = useState(false);
 
-  // Initialize Cytoscape once
   useEffect(() => {
     if (!containerRef.current || cyRef.current) return;
 
@@ -61,80 +67,116 @@ export default function GraphViewer({
         {
           selector: "node",
           style: {
-            "background-color": "#1a1a28",
+            "background-color": "#181a20",
             "background-opacity": 1,
             "border-width": 1.5,
-            "border-color": "#2a2a3e",
+            "border-color": "#262a33",
             "border-opacity": 1,
-            "label": "data(label)",
-            "color": "#e2e8f0",
+            label: "data(label)",
+            color: "#e9e7e0",
             "font-size": "11px",
+            "font-family": "IBM Plex Mono, monospace",
             "font-weight": 500,
             "text-valign": "bottom",
             "text-halign": "center",
-            "text-margin-y": 6,
-            "width": 28,
-            "height": 28,
-            "transition-property": "background-color, border-color",
-            "transition-duration": 0.2,
+            "text-margin-y": 7,
+            width: 26,
+            height: 26,
+            "transition-property": "background-color, border-color, opacity",
+            "transition-duration": 0.25,
           } as cytoscape.Css.Node,
         },
         {
           selector: "node[?is_entry]",
           style: {
-            "border-color": "#34d399",
-            "border-width": 2,
-            "background-color": "#0c0c12",
-            "bounds-expansion": 16,
-            },
+            "border-color": "#ef5b4e",
+            "border-width": 2.5,
+            "background-color": "#ef5b4e",
+            "background-opacity": 0.9,
+            width: 20,
+            height: 20,
+            "overlay-color": "#ef5b4e",
+            "overlay-opacity": 0.25,
+            "overlay-padding": 6,
+          } as any,
         },
         {
           selector: "node:selected",
           style: {
-            "border-color": "#34d399",
+            "border-color": "#f2a33e",
             "border-width": 2.5,
-            "background-color": "#0c0c12",
+            "background-color": "#181a20",
           },
         },
         {
           selector: "node[type]",
           style: {
-            "background-color": (ele: any) => {
-              const type = ele.data("type") as string;
-              return NODE_COLORS[type] || "#6b7280";
-            },
-            "background-opacity": 0.12,
-            "border-color": (ele: any) => {
-              const type = ele.data("type") as string;
-              return NODE_COLORS[type] || "#6b7280";
-            },
+            "background-color": (ele: any) => NODE_COLORS[ele.data("type") as string] || "#7d818c",
+            "background-opacity": 0.14,
+            "border-color": (ele: any) => NODE_COLORS[ele.data("type") as string] || "#7d818c",
+          },
+        },
+        {
+          selector: "node.redacted",
+          style: {
+            "background-opacity": 0.04,
+            "border-opacity": 0.25,
+            color: "#5d616b",
+            "text-opacity": 0.5,
           },
         },
         {
           selector: "edge",
           style: {
-            "width": 1.5,
-            "line-color": "#3f3f4f",
-            "line-opacity": 0.5,
-            "target-arrow-color": "#3f3f4f",
+            width: 1.5,
+            "line-color": "#2e323c",
+            "line-opacity": 0.6,
+            "target-arrow-color": "#2e323c",
             "target-arrow-shape": "chevron",
             "curve-style": "bezier",
-            "label": "data(label)",
+            label: "data(label)",
             "font-size": "9px",
-            "color": "#5c5c6e",
-            "text-background-color": "#0c0c12",
+            "font-family": "IBM Plex Mono, monospace",
+            color: "#5d616b",
+            "text-background-color": "#101217",
             "text-background-opacity": 0.95,
             "text-background-padding": "2px 5px",
             "text-background-shape": "roundrectangle",
           } as cytoscape.Css.Edge,
         },
         {
+          selector: "edge.redacted",
+          style: { "line-opacity": 0.08, "text-opacity": 0.15 },
+        },
+        // The traversed path, lit up like red string on cork
+        {
+          selector: "edge.evidence",
+          style: {
+            "line-color": "#f2a33e",
+            "line-opacity": 1,
+            "target-arrow-color": "#f2a33e",
+            width: 2.5,
+            "overlay-color": "#f2a33e",
+            "overlay-opacity": 0.2,
+            "overlay-padding": 4,
+            color: "#f2a33e",
+            "text-background-color": "#101217",
+          } as any,
+        },
+        {
+          selector: "node.evidence",
+          style: {
+            "border-color": "#f2a33e",
+            "border-width": 2,
+          },
+        },
+        {
           selector: "edge:selected",
           style: {
-            "line-color": "#10b981",
-            "line-opacity": 0.8,
-            "target-arrow-color": "#10b981",
-            "width": 2,
+            "line-color": "#5fd0a7",
+            "line-opacity": 0.9,
+            "target-arrow-color": "#5fd0a7",
+            width: 2.5,
           } as cytoscape.Css.Edge,
         },
       ],
@@ -168,33 +210,18 @@ export default function GraphViewer({
     };
   }, [onNodeSelect]);
 
-  // Update elements when data changes
+  // Rebuild elements when data changes
   useEffect(() => {
     const cy = cyRef.current;
     if (!cy || !isReady) return;
 
     cy.elements().remove();
-
     if (nodes.length === 0) return;
 
     const cyNodes = nodes.map((n) => ({
-      data: {
-        id: n.id,
-        label: n.label,
-        type: n.type,
-        description: n.description || "",
-        is_entry: n.is_entry || false,
-      },
+      data: { id: n.id, label: n.label, type: n.type, description: n.description || "", is_entry: n.is_entry || false },
     }));
-
-    const cyEdges = edges.map((e) => ({
-      data: {
-        id: e.id,
-        source: e.source,
-        target: e.target,
-        label: e.label,
-      },
-    }));
+    const cyEdges = edges.map((e) => ({ data: { id: e.id, source: e.source, target: e.target, label: e.label } }));
 
     cy.add([...cyNodes, ...cyEdges]);
 
@@ -213,7 +240,7 @@ export default function GraphViewer({
       animate: true,
       animationDuration: 700,
       fit: true,
-    });
+    } as any);
 
     layout.run();
 
@@ -228,55 +255,59 @@ export default function GraphViewer({
     }
   }, [nodes, edges, isReady, selectedNodeId]);
 
-  const zoomIn = useCallback(() => {
-    cyRef.current?.zoom(cyRef.current.zoom() * 1.25);
-  }, []);
+  // Apply / clear the traversal-path highlight (dim everything else, light the trail)
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy || !isReady) return;
 
-  const zoomOut = useCallback(() => {
-    cyRef.current?.zoom(cyRef.current.zoom() * 0.8);
-  }, []);
+    cy.elements().removeClass("evidence redacted");
 
-  const fit = useCallback(() => {
-    cyRef.current?.fit(undefined, 50);
-  }, []);
+    if (!evidencePath || evidencePath.nodeIds.length === 0) return;
+
+    const nodeSet = new Set(evidencePath.nodeIds);
+    const edgeSet = new Set(evidencePath.edgeIds);
+
+    cy.nodes().forEach((n) => {
+      if (nodeSet.has(n.id())) n.addClass("evidence");
+      else n.addClass("redacted");
+    });
+    cy.edges().forEach((e) => {
+      if (edgeSet.has(e.id())) e.addClass("evidence");
+      else e.addClass("redacted");
+    });
+  }, [evidencePath, isReady]);
+
+  const zoomIn = useCallback(() => cyRef.current?.zoom(cyRef.current.zoom() * 1.25), []);
+  const zoomOut = useCallback(() => cyRef.current?.zoom(cyRef.current.zoom() * 0.8), []);
+  const fit = useCallback(() => cyRef.current?.fit(undefined, 50), []);
 
   const hasData = nodes.length > 0;
 
   return (
-    <div className={cn("relative w-full h-full overflow-hidden rounded-xl bg-[#050508]", className)}>
+    <div
+      className={cn("relative w-full h-full overflow-hidden rounded-lg", className)}
+      style={{ background: "var(--board)", backgroundImage: "var(--board-dot)", backgroundSize: "18px 18px" }}
+    >
       {!hasData && (
         <div className="absolute inset-0 flex flex-col items-center justify-center z-10">
-          <div className="w-10 h-10 rounded-xl bg-[#13131f] border border-[#1a1a28] flex items-center justify-center mb-3">
-            <Focus className="w-4 h-4 text-[#3f3f4f]" />
+          <div className="w-10 h-10 rounded-lg bg-[var(--panel-raised)] border border-[var(--hairline)] flex items-center justify-center mb-3 rotate-[-2deg]">
+            <Focus className="w-4 h-4 text-[var(--ink-faint)]" />
           </div>
-          <p className="text-[12px] text-[#5c5c6e]">Search for an entity to visualize</p>
+          <p className="eyebrow">Board is empty — search an entity to pin it</p>
         </div>
       )}
 
-      <div
-        ref={containerRef}
-        className="w-full h-full"
-        style={{ opacity: hasData ? 1 : 0 }}
-      />
+      <div ref={containerRef} className="w-full h-full" style={{ opacity: hasData ? 1 : 0 }} />
 
       {hasData && (
         <div className="absolute bottom-4 right-4 flex flex-col gap-1">
-          <button
-            onClick={zoomIn}
-            className="p-2 rounded-lg bg-[#13131f] border border-[#1a1a28] text-[#5c5c6e] hover:text-[#9494a3] hover:border-[#2a2a3e] transition-all"
-          >
+          <button onClick={zoomIn} className="p-2 rounded-md bg-[var(--panel-raised)] border border-[var(--hairline)] text-[var(--ink-faint)] hover:text-[var(--ink)] hover:border-[var(--hairline-strong)] transition-all">
             <Plus className="w-3.5 h-3.5" />
           </button>
-          <button
-            onClick={zoomOut}
-            className="p-2 rounded-lg bg-[#13131f] border border-[#1a1a28] text-[#5c5c6e] hover:text-[#9494a3] hover:border-[#2a2a3e] transition-all"
-          >
+          <button onClick={zoomOut} className="p-2 rounded-md bg-[var(--panel-raised)] border border-[var(--hairline)] text-[var(--ink-faint)] hover:text-[var(--ink)] hover:border-[var(--hairline-strong)] transition-all">
             <Minus className="w-3.5 h-3.5" />
           </button>
-          <button
-            onClick={fit}
-            className="p-2 rounded-lg bg-[#13131f] border border-[#1a1a28] text-[#5c5c6e] hover:text-[#9494a3] hover:border-[#2a2a3e] transition-all"
-          >
+          <button onClick={fit} className="p-2 rounded-md bg-[var(--panel-raised)] border border-[var(--hairline)] text-[var(--ink-faint)] hover:text-[var(--ink)] hover:border-[var(--hairline-strong)] transition-all">
             <Maximize2 className="w-3.5 h-3.5" />
           </button>
         </div>

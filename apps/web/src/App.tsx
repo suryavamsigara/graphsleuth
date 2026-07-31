@@ -1,19 +1,15 @@
-import { Routes, Route } from "react-router-dom";
-import Layout from "./components/Layout";
-import ChatPage from "./pages/ChatPage";
-import IngestPage from "./pages/IngestPage";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import "./styles/tokens.css";
 import ExplorePage from "./pages/ExplorePage";
-import EvidencePage from "./pages/EvidencePage";
+
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { retry: 1, staleTime: 10_000 } },
+});
 
 export default function App() {
   return (
-    <Layout>
-      <Routes>
-        <Route path="/" element={<ChatPage />} />
-        <Route path="/ingest" element={<IngestPage />} />
-        <Route path="/explore" element={<ExplorePage />} />
-        <Route path="/evidence/:id" element={<EvidencePage />} />
-      </Routes>
-    </Layout>
+    <QueryClientProvider client={queryClient}>
+      <ExplorePage />
+    </QueryClientProvider>
   );
 }

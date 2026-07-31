@@ -1,0 +1,126 @@
+/*
+  GRAPHSLEUTH DESIGN SYSTEM — "Case Board"
+  ------------------------------------------------------------
+  Signature idea: the graph canvas IS the evidence board. Entry
+  nodes are pins, traversal is red/amber string, source chunks
+  are exhibit cards with a torn top edge, and confidence reads
+  like a stamped case verdict. Everything else (chat, panels,
+  header) is quiet, monospace-labeled, dossier paperwork so the
+  board stays the one loud thing in the room.
+
+  Type pairing:
+    - "IBM Plex Mono"  -> all chrome, labels, ids, numbers, stamps
+    - "Inter"          -> conversational chat text & long-form copy
+  Never swap these roles — mono is how the system marks its own
+  bookkeeping, Inter is how a human is speaking.
+*/
+
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&family=Inter:wght@400;500;600;700&display=swap");
+
+:root {
+  /* ---- surfaces ---- */
+  --void: #0a0b0d;              /* the room the board hangs in */
+  --board: #101217;             /* cork-board canvas */
+  --panel: #14161c;             /* chat / drawer surfaces */
+  --panel-raised: #191c23;
+  --hairline: #262a33;          /* board grid + dividers */
+  --hairline-strong: #34394449;
+
+  /* ---- ink ---- */
+  --ink: #e9e7e0;               /* paper-white, never pure white */
+  --ink-dim: #9a9da6;
+  --ink-faint: #5d616b;
+  --ink-redacted: #34363c;      /* dimmed / non-relevant nodes */
+
+  /* ---- signal colors ---- */
+  --thread: #f2a33e;            /* the evidence string / active trace, amber */
+  --thread-glow: rgba(242, 163, 62, 0.55);
+  --pin: #ef5b4e;               /* entry-node pin, case-file red */
+  --pin-glow: rgba(239, 91, 78, 0.5);
+  --verdict: #5fd0a7;           /* confidence stamp green */
+  --wire: #6c8ef5;              /* structural / secondary accent, cold wire-blue */
+
+  /* ---- entity palette (kept from the domain model, tuned) ---- */
+  --etype-person: #f2a33e;
+  --etype-org: #6c8ef5;
+  --etype-location: #5fd0a7;
+  --etype-event: #ef5b4e;
+  --etype-product: #b98cf2;
+  --etype-concept: #4fc3d9;
+  --etype-regulation: #e08a3c;
+  --etype-other: #7d818c;
+
+  /* ---- type ---- */
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --font-sans: "Inter", -apple-system, sans-serif;
+
+  /* ---- geometry ---- */
+  --radius-sm: 3px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --board-dot: radial-gradient(circle, var(--hairline) 1px, transparent 1px);
+
+  /* ---- motion ---- */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  background: var(--void);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+.mono { font-family: var(--font-mono); }
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+/* Case-stamp badge: rotated, inked, used for confidence/entry-point/status */
+.stamp {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 2px;
+  border: 1.5px solid currentColor;
+  transform: rotate(-1.2deg);
+}
+
+/* Exhibit card: source chunk styled as a torn evidence clipping */
+.exhibit {
+  position: relative;
+  background: var(--panel-raised);
+  border: 1px solid var(--hairline);
+  border-left: 2px solid var(--thread);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+/* focus visibility, kept simple and consistent everywhere */
+:focus-visible {
+  outline: 2px solid var(--wire);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--hairline); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--hairline-strong); }
