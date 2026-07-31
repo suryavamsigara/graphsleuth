@@ -15,3 +15,5 @@ file.txt
 graph_exports/
 db/
 scripts/
+
+node_modules/
