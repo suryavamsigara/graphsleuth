@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import { useDropzone } from "react-dropzone";
-import { Upload, FileText, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
+import { Upload, FileText, CheckCircle, AlertCircle, Loader2, FileCode, FileType } from "lucide-react";
 import { api } from "../lib/api";
 import { cn } from "../lib/utils";
 
@@ -14,36 +14,40 @@ interface UploadResult {
   error?: string;
 }
 
+function FileIcon({ name }: { name: string }) {
+  const ext = name.split(".").pop()?.toLowerCase();
+  if (ext === "pdf") return <FileType className="w-4 h-4 text-red-400" />;
+  if (ext === "py") return <FileCode className="w-4 h-4 text-blue-400" />;
+  return <FileText className="w-4 h-4 text-[var(--text-tertiary)]" />;
+}
+
 export default function IngestPage() {
   const [uploads, setUploads] = useState<UploadResult[]>([]);
   const [isUploading, setIsUploading] = useState(false);
 
-  const onDrop = useCallback(
-    async (acceptedFiles: File[]) => {
-      setIsUploading(true);
-      for (const file of acceptedFiles) {
-        const result = await api.documents.upload(file);
-        setUploads((prev) => [
-          ...prev,
-          {
-            file: file.name,
-            status: result.success
-              ? result.error?.includes("Duplicate")
-                ? "duplicate"
-                : "success"
-              : "error",
-            docId: result.document_id,
-            chunks: result.chunks_processed,
-            nodes: result.nodes_created,
-            edges: result.edges_created,
-            error: result.error,
-          },
-        ]);
-      }
-      setIsUploading(false);
-    },
-    []
-  );
+  const onDrop = useCallback(async (acceptedFiles: File[]) => {
+    setIsUploading(true);
+    for (const file of acceptedFiles) {
+      const result = await api.documents.upload(file);
+      setUploads((prev) => [
+        ...prev,
+        {
+          file: file.name,
+          status: result.success
+            ? result.error?.includes("Duplicate")
+              ? "duplicate"
+              : "success"
+            : "error",
+          docId: result.document_id,
+          chunks: result.chunks_processed,
+          nodes: result.nodes_created,
+          edges: result.edges_created,
+          error: result.error,
+        },
+      ]);
+    }
+    setIsUploading(false);
+  }, []);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -55,56 +59,91 @@ export default function IngestPage() {
   });
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
-      <h2 className="text-2xl font-bold mb-6">Ingest Documents</h2>
+    <div className="h-full overflow-auto p-8 max-w-2xl mx-auto">
+      <div className="mb-8">
+        <h2 className="text-xl font-semibold tracking-tight">Ingest Documents</h2>
+        <p className="text-[13px] text-[var(--text-tertiary)] mt-1">
+          Upload files to extract entities and build the knowledge graph.
+        </p>
+      </div>
 
       <div
         {...getRootProps()}
         className={cn(
-          "border-2 border-dashed rounded-xl p-12 text-center cursor-pointer transition-colors",
+          "relative border border-dashed rounded-2xl p-12 text-center cursor-pointer transition-all duration-300",
           isDragActive
-            ? "border-emerald-500 bg-emerald-900/10"
-            : "border-slate-700 hover:border-slate-500"
+            ? "border-[var(--accent)]/40 bg-[var(--accent)]/5"
+            : "border-[var(--border-visible)] bg-[var(--bg-surface)] hover:border-[var(--text-muted)] hover:bg-[var(--bg-raised)]"
         )}
       >
         <input {...getInputProps()} />
-        <Upload className="w-10 h-10 mx-auto mb-4 text-slate-400" />
-        <p className="text-lg font-medium">
-          {isDragActive ? "Drop files here..." : "Drag & drop files here"}
+        <div
+          className={cn(
+            "w-12 h-12 rounded-xl mx-auto mb-4 flex items-center justify-center transition-colors",
+            isDragActive ? "bg-[var(--accent)]/10" : "bg-[var(--bg-raised)]"
+          )}
+        >
+          <Upload
+            className={cn(
+              "w-5 h-5 transition-colors",
+              isDragActive ? "text-[var(--accent)]" : "text-[var(--text-muted)]"
+            )}
+          />
+        </div>
+        <p className="text-[13px] font-medium text-[var(--text-primary)]">
+          {isDragActive ? "Drop files here" : "Drag files here or click to browse"}
         </p>
-        <p className="text-sm text-slate-500 mt-2">
-          Supports .txt, .md, .py, .pdf
+        <p className="text-[11px] text-[var(--text-muted)] mt-2">
+          Supports TXT, MD, PY, PDF
         </p>
       </div>
 
       {isUploading && (
-        <div className="mt-6 flex items-center gap-2 text-emerald-400">
-          <Loader2 className="w-4 h-4 animate-spin" />
-          <span className="text-sm">Processing...</span>
+        <div className="mt-6 flex items-center gap-2 text-[var(--accent)]">
+          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          <span className="text-[12px] font-medium">Processing documents...</span>
         </div>
       )}
 
       {uploads.length > 0 && (
-        <div className="mt-6 space-y-2">
-          <h3 className="text-sm font-medium text-slate-400 uppercase tracking-wider">
-            Results
+        <div className="mt-8 space-y-2">
+          <h3 className="text-[11px] font-semibold uppercase tracking-widest text-[var(--text-muted)] mb-3">
+            Upload History
           </h3>
           {uploads.map((u, i) => (
             <div
               key={i}
-              className="flex items-center gap-3 bg-slate-800 rounded-lg p-3 border border-slate-700"
+              className="flex items-center gap-3 bg-[var(--bg-surface)] rounded-xl p-3 border border-[var(--border-subtle)]"
             >
-              {u.status === "success" && <CheckCircle className="w-5 h-5 text-emerald-400" />}
-              {u.status === "error" && <AlertCircle className="w-5 h-5 text-red-400" />}
-              {u.status === "duplicate" && <FileText className="w-5 h-5 text-amber-400" />}
+              <div className="w-8 h-8 rounded-lg bg-[var(--bg-raised)] flex items-center justify-center shrink-0">
+                <FileIcon name={u.file} />
+              </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">{u.file}</p>
-                <p className="text-xs text-slate-400">
-                  {u.status === "success" &&
-                    `${u.chunks} chunks · ${u.nodes} nodes · ${u.edges} edges`}
-                  {u.status === "duplicate" && "Already ingested"}
-                  {u.status === "error" && u.error}
+                <p className="text-[13px] font-medium text-[var(--text-primary)] truncate">
+                  {u.file}
                 </p>
+                <p className="text-[11px] text-[var(--text-tertiary)]">
+                  {u.status === "success" && (
+                    <span className="tabular-nums">
+                      {u.chunks} chunks · {u.nodes} nodes · {u.edges} edges
+                    </span>
+                  )}
+                  {u.status === "duplicate" && "Already ingested"}
+                  {u.status === "error" && (
+                    <span className="text-red-400">{u.error}</span>
+                  )}
+                </p>
+              </div>
+              <div className="shrink-0">
+                {u.status === "success" && (
+                  <CheckCircle className="w-4 h-4 text-[var(--accent)]" />
+                )}
+                {u.status === "duplicate" && (
+                  <AlertCircle className="w-4 h-4 text-amber-400" />
+                )}
+                {u.status === "error" && (
+                  <AlertCircle className="w-4 h-4 text-red-400" />
+                )}
               </div>
             </div>
           ))}

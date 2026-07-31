@@ -1,51 +1,15 @@
 import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Network, ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowLeft, Network, Loader2 } from "lucide-react";
 import { api } from "../lib/api";
 import { Link } from "react-router-dom";
-import CytoscapeComponent from "react-cytoscapejs";
-
-const cyStylesheet: any[] = [
-  {
-    selector: "node",
-    style: {
-      "background-color": "#334155",
-      "label": "data(label)",
-      "color": "#e2e8f0",
-      "font-size": "12px",
-      "text-valign": "center",
-      "text-halign": "center",
-      "width": "label",
-      "height": "label",
-      "padding": "10px",
-      "shape": "round-rectangle",
-    },
-  },
-  {
-    selector: "node[is_entry = 'true']",
-    style: {
-      "background-color": "#059669",
-      "border-width": 2,
-      "border-color": "#34d399",
-    },
-  },
-  {
-    selector: "edge",
-    style: {
-      "width": 2,
-      "line-color": "#475569",
-      "target-arrow-color": "#475569",
-      "target-arrow-shape": "triangle",
-      "curve-style": "bezier",
-      "label": "data(label)",
-      "font-size": "10px",
-      "color": "#94a3b8",
-    },
-  },
-];
+import GraphViewer from "../components/GraphViewer";
+import NodePanel from "../components/NodePanel";
+import { useState, useCallback } from "react";
 
 export default function EvidencePage() {
   const { id } = useParams<{ id: string }>();
+  const [selectedNode, setSelectedNode] = useState<any>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ["evidence-graph", id],
@@ -53,64 +17,49 @@ export default function EvidencePage() {
     enabled: !!id,
   });
 
-  const elements = data
-    ? [
-        ...data.nodes.map((n: any) => ({
-          data: {
-            id: n.id,
-            label: n.label,
-            ...n,
-          },
-        })),
-        ...data.edges.map((e: any) => ({
-          data: {
-            id: e.id,
-            source: e.source,
-            target: e.target,
-            label: e.label,
-          },
-        })),
-      ]
-    : [];
+  const handleNodeSelect = useCallback((node: any) => {
+    setSelectedNode(node);
+  }, []);
 
   return (
     <div className="flex flex-col h-full">
-      <div className="border-b border-slate-800 p-4 flex items-center gap-3">
+      <div className="border-b border-[var(--border-subtle)] px-6 py-3 flex items-center gap-3 bg-[var(--bg-base)] shrink-0">
         <Link
           to="/"
-          className="text-slate-400 hover:text-slate-200 transition-colors"
+          className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface)] transition-all"
         >
-          <ArrowLeft className="w-5 h-5" />
+          <ArrowLeft className="w-4 h-4" />
         </Link>
-        <div>
-          <h2 className="text-lg font-bold flex items-center gap-2">
-            <Network className="w-5 h-5 text-emerald-400" />
-            Evidence Path
-          </h2>
-          <p className="text-xs text-slate-500 font-mono">{id}</p>
+        <div className="flex items-center gap-2">
+          <Network className="w-4 h-4 text-[var(--accent)]" />
+          <h2 className="text-[13px] font-semibold">Evidence Path</h2>
         </div>
+        <code className="ml-auto text-[11px] text-[var(--text-muted)] font-mono bg-[var(--bg-surface)] px-2 py-0.5 rounded">
+          {id?.slice(0, 8)}...
+        </code>
       </div>
 
       <div className="flex-1 relative">
         {isLoading ? (
-          <div className="flex items-center justify-center h-full text-slate-400">
-            <Loader2 className="w-8 h-8 animate-spin mr-3" />
-            Loading evidence graph...
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="flex items-center gap-2 text-[var(--text-muted)]">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span className="text-[12px]">Loading traversal graph...</span>
+            </div>
           </div>
+        ) : data ? (
+          <>
+            <GraphViewer
+              nodes={data.nodes}
+              edges={data.edges}
+              onNodeSelect={handleNodeSelect}
+            />
+            <NodePanel node={selectedNode} onClose={() => setSelectedNode(null)} />
+          </>
         ) : (
-          <CytoscapeComponent
-            elements={elements}
-            style={{ width: "100%", height: "100%" }}
-            stylesheet={cyStylesheet}
-            layout={{ name: "cose", padding: 20, animate: true } as any}
-            cy={(cy: any) => {
-              cy.fit();
-              cy.on("tap", "node", (evt: any) => {
-                const node = evt.target;
-                console.log("Node tapped:", node.data());
-              });
-            }}
-          />
+          <div className="absolute inset-0 flex items-center justify-center text-[var(--text-muted)] text-[13px]">
+            Evidence not found
+          </div>
         )}
       </div>
     </div>
