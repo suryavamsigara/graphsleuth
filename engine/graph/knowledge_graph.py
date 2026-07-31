@@ -313,9 +313,15 @@ class KnowledgeGraph:
         top_k: int = 3,
         max_depth: int = 2,
         direction: str = "both",
+        min_score: float | None = None,
     ) -> EvidencePath:
         """
         Delegate to TraversalEngine, passing graph state.
+
+        `min_score`, when provided, overrides the instance-level
+        `guided_traversal_min_score` for just this call — this is what lets
+        the chat panel's "confidence threshold" dropdown tighten or loosen
+        traversal per-question instead of only at construction time.
         """
         query_emb = self.encoder.encode_single(question)
         entry_nodes = self.get_top_k_nodes(question, k=top_k)
@@ -331,6 +337,7 @@ class KnowledgeGraph:
             search_chunks=lambda q, k: self.search_chunks(q, k),
             max_depth=max_depth,
             direction=direction,
+            guided_min_score=min_score if min_score is not None else self.guided_traversal_min_score,
         )
 
     # ---------------------------------------------------------------------------

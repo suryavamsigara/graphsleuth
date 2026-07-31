@@ -86,6 +86,7 @@ class TraversalEngine:
         nodes: dict[str, Node],
         out_edges: dict[str, list[Edge]],
         in_edges: dict[str, list[Edge]],
+        min_score: float,
         get_embedding: Callable[[str], list[float] | None],
         max_depth: int = 2,
         direction: str = "both",
@@ -131,7 +132,7 @@ class TraversalEngine:
                         continue
 
                     neighbor_score = score_node(neighbor_id)
-                    if neighbor_score < self.guided_min_score:
+                    if neighbor_score < min_score:
                         continue
 
                     new_edges = edges_so_far + [edge]
@@ -158,6 +159,7 @@ class TraversalEngine:
         nodes: dict[str, Node],
         out_edges: dict[str, list[Edge]],
         in_edges: dict[str, list[Edge]],
+        guided_min_score: float,
         get_embedding: Callable[[str], list[float] | None],
         search_chunks: Callable[[str, int], list[tuple[str, float]]],
         max_depth: int = 2,
@@ -207,6 +209,7 @@ class TraversalEngine:
                 nodes=nodes,
                 out_edges=out_edges,
                 in_edges=in_edges,
+                min_score=guided_min_score,
                 get_embedding=get_embedding,
                 max_depth=max_depth,
                 direction=direction,

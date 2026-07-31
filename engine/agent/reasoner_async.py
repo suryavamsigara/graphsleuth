@@ -23,6 +23,32 @@ class AgentAnswer:
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
+def _compute_confidence(entry_scores: list[float], chunk_scores: list[float]) -> float:
+    """
+    Confidence is derived from how strongly retrieval actually
+    matched the question:
+
+      60% weight: mean similarity of the entry nodes the search step found
+      40% weight: mean similarity of the source chunks that were kept
+
+    Either half missing degrades gracefully rather than dividing by zero.
+    Clamped to [0, 1].
+    """
+    entry_avg = sum(entry_scores) / len(entry_scores) if entry_scores else 0.0
+    chunk_avg = sum(chunk_scores) / len(chunk_scores) if chunk_scores else 0.0
+
+    if entry_scores and chunk_scores:
+        confidence = 0.6 * entry_avg + 0.4 * chunk_avg
+    elif entry_scores:
+        confidence = entry_avg
+    elif chunk_scores:
+        confidence = chunk_avg
+    else:
+        confidence = 0.0
+
+    return max(0.0, min(1.0, confidence))
+
+
 class AsyncGraphReasoner:
     def __init__(
         self,
@@ -43,14 +69,34 @@ class AsyncGraphReasoner:
         self.top_k = top_k
         self.client = get_async_openai_client() if use_openai else get_async_ollama_client()
 
-    async def answer_stream(self, question: str):
-        """Yields SSE-style dict events: step, evidence, token, done."""
+    async def answer_stream(
+        self,
+        question: str,
+        confidence_threshold: float | None = None,
+        top_k: int | None = None,
+        max_depth: int | None = None,
+    ):
+        """Yields SSE-style dict events: step, evidence, token, done.
+
+        `confidence_threshold` (0-1, from the chat panel's "confidence
+        threshold" dropdown) is passed straight through to
+        KnowledgeGraph.multi_hop_query's `min_score` override, tightening
+        or loosening which neighbors the traversal keeps at each hop for
+        just this question.
+
+        `top_k` / `max_depth`, when given, override the constructor
+        defaults for just this call — this is what the chat panel's
+        "search depth" dropdown drives.
+        """
+        resolved_top_k = top_k if top_k is not None else self.top_k
+        resolved_max_depth = max_depth if max_depth is not None else self.max_depth
+
         start_time = time.time()
         steps = []
 
         # Step 1: entry nodes
         t0 = time.time()
-        entry_nodes = await asyncio.to_thread(self.kg.get_top_k_nodes, question, self.top_k)
+        entry_nodes = await asyncio.to_thread(self.kg.get_top_k_nodes, question, resolved_top_k)
         steps.append({
             "step": 1,
             "action": "search_nodes",
@@ -64,15 +110,17 @@ class AsyncGraphReasoner:
             yield {"type": "error", "message": "No relevant entities found"}
             return
 
+        entry_scores = [score for _, score in entry_nodes]
+
         # Step 2: traverse
         t0 = time.time()
         evidence = await asyncio.to_thread(
-            self.kg.multi_hop_query, question, self.top_k, self.max_depth, "both"
+            self.kg.multi_hop_query, question, resolved_top_k, resolved_max_depth, "both", confidence_threshold
         )
         steps.append({
             "step": 2,
             "action": "traverse_graph",
-            "input": {"entry_nodes": evidence.entry_nodes, "max_depth": self.max_depth},
+            "input": {"entry_nodes": evidence.entry_nodes, "max_depth": resolved_max_depth},
             "output": {
                 "visited_nodes": len(evidence.visited_nodes),
                 "traversed_edges": len(evidence.traversed_edges),
@@ -102,10 +150,8 @@ class AsyncGraphReasoner:
             chunk_lookup[cid] = chunk.text
 
         chunk_scores.sort(key=lambda x: x[2], reverse=True)
-        top_chunks = [
-            f"[CHUNK {c[0]}]:\n{c[1]}"
-            for c in chunk_scores[: self.max_evidence_chunks]
-        ]
+        top_chunks_with_scores = chunk_scores[: self.max_evidence_chunks]
+        top_chunks = [f"[CHUNK {c[0]}]:\n{c[1]}" for c in top_chunks_with_scores]
 
         steps.append({
             "step": 3,
@@ -119,6 +165,8 @@ class AsyncGraphReasoner:
         if not top_chunks:
             yield {"type": "error", "message": "Found entities but could not retrieve source text"}
             return
+
+        confidence = _compute_confidence(entry_scores, [s for _, _, s in top_chunks_with_scores])
 
         # Step 4: build context
         entity_context = []
@@ -195,6 +243,7 @@ class AsyncGraphReasoner:
 
         # Step 6: persist
         evidence.answer = answer_text
+        evidence.confidence = confidence
         evidence_id = await asyncio.to_thread(self.kg.save_evidence, evidence)
 
         total_latency = round((time.time() - start_time) * 1000, 2)
@@ -213,5 +262,6 @@ class AsyncGraphReasoner:
             "evidence_id": evidence_id,
             "tokens_used": tokens_used,
             "latency_ms": total_latency,
+            "confidence": confidence,
             "steps": steps,
         }

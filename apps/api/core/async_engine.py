@@ -27,8 +27,19 @@ class AsyncEngine:
         async with self._write_lock:
             return await asyncio.to_thread(self.pipeline.ingest_file, file_path, file_name)
 
-    async def query_stream(self, question: str) -> AsyncGenerator[dict, None]:
-        async for event in self.agent.answer_stream(question):
+    async def query_stream(
+        self,
+        question: str,
+        confidence_threshold: float | None = None,
+        top_k: int | None = None,
+        max_depth: int | None = None,
+    ) -> AsyncGenerator[dict, None]:
+        async for event in self.agent.answer_stream(
+            question,
+            confidence_threshold=confidence_threshold,
+            top_k=top_k,
+            max_depth=max_depth,
+        ):
             yield event
 
     async def list_documents(self):
@@ -51,4 +62,39 @@ class AsyncEngine:
             self.kg.bfs_traversal, start_node_id, max_depth=max_depth, direction=direction
         )
 
-    
+    async def get_node_edges(self, node_id: str):
+        """All edges touching a node, both directions, deduplicated."""
+        return await asyncio.to_thread(self.kg.get_all_edges, node_id)
+
+    async def get_chunk(self, chunk_id: str):
+        return await asyncio.to_thread(self.kg.get_chunk, chunk_id)
+
+
+    async def get_evidence_by_id(self, evidence_id: str) -> EvidencePath | None:
+        return await asyncio.to_thread(self.kg.store.get_evidence, evidence_id)
+
+    async def get_evidence_graph(self, evidence: EvidencePath) -> dict:
+        def _build():
+            node_ids = set(evidence.visited_nodes) | set(evidence.entry_nodes)
+            nodes = []
+            for nid in node_ids:
+                n = self.kg.get_node(nid)
+                if not n:
+                    continue
+                nodes.append(
+                    {
+                        "id": n.id,
+                        "label": n.name,
+                        "type": n.node_type,
+                        "description": n.description,
+                        "is_entry": nid in evidence.entry_nodes,
+                    }
+                )
+            edges = [
+                {"id": e.id, "source": e.source_id, "target": e.target_id, "label": e.relation}
+                for e in evidence.traversed_edges
+            ]
+            return {"nodes": nodes, "edges": edges}
+
+        return await asyncio.to_thread(_build)
+
