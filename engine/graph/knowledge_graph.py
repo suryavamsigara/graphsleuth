@@ -27,6 +27,7 @@ class KnowledgeGraph:
     """
     def __init__(
         self,
+        project_id: str,
         store: GraphStore,
         vector_store: VectorStore,
         encoder: EmbeddingEncoder,
@@ -34,6 +35,7 @@ class KnowledgeGraph:
         guided_traversal_min_score: float = 0.20,
         beam_width: int = 3,
     ):
+        self.project_id = project_id
         self.store = store
         self.vector_store = vector_store
         self.encoder = encoder
@@ -47,10 +49,10 @@ class KnowledgeGraph:
             min_entry_score=self.min_entry_score,
         )
 
-        # in memory caches (loaded from store on init)
-        self.nodes: dict[str, Node] = self.store.load_nodes()
-        self.chunks: dict[str, Chunk] = self.store.load_chunks()
-        self.documents: dict[str, Document] = self.store.load_documents()
+        # in memory caches 
+        self.nodes: dict[str, Node] = self.store.load_nodes(project_id)
+        self.chunks: dict[str, Chunk] = self.store.load_chunks(project_id)
+        self.documents: dict[str, Document] = self.store.load_documents(project_id)
         self.doc_checksums: set[str] = {
             d.checksum for d in self.documents.values()
         }
@@ -65,10 +67,10 @@ class KnowledgeGraph:
         self._embedding_cache: dict[str, list[float]] = {}
 
     def _load_edges_into_cache(self):
-        """Load all edges from SQLite into directional caches."""
+        """Load this project's edges from dbinto directional caches."""
         self.out_edges.clear()
         self.in_edges.clear()
-        for edge in self.store.load_edges():
+        for edge in self.store.load_edges(self.project_id):
             self.out_edges[edge.source_id].append(edge)
             self.in_edges[edge.target_id].append(edge)
 
@@ -94,18 +96,20 @@ class KnowledgeGraph:
     def register_document(self, file_path: str, file_name: str) -> str | None:
         """
         Calculates file checksum, verifies duplicates, and registers the doc.
+        Duplicate check is scoped to this project.
         """
         checksum = KnowledgeGraph.calculate_checksum(file_path)
 
         if checksum in self.doc_checksums:
-            print(f"Skipping ingestion: Document '{file_name}' already exists.")
+            print(f"Skipping ingestion: Document '{file_name}' already exists in this project.")
             return None
         
         new_doc = Document(
             path=file_path,
             name=file_name,
             checksum=checksum,
-            ingested_at=datetime.now(timezone.utc).isoformat()
+            ingested_at=datetime.now(timezone.utc).isoformat(),
+            project_id=self.project_id,
         )
 
         self.documents[new_doc.id] = new_doc
@@ -146,6 +150,7 @@ class KnowledgeGraph:
         """
         Adds a node to the graph, persists it, and updates the embedding matrix.
         """
+        node.project_id = self.project_id
         self.nodes[node.id] = node
         self.store.save_node(node)
         text = f"{node.name} {node.description}".strip()
@@ -204,6 +209,7 @@ class KnowledgeGraph:
         if edge.source_id == edge.target_id:
             raise ValueError("Self-loops are not allowed")
 
+        edge.project_id = self.project_id
         inserted = self.store.save_edge(edge)
         if inserted:
             self.out_edges[edge.source_id].append(edge)
@@ -245,15 +251,16 @@ class KnowledgeGraph:
     
     def get_top_k_nodes(self, query: str, k: int = 5) -> list[tuple[str, float]]:
         """
-        Find the k most semantically similar nodes to the query.
+        Find the k most semantically similar nodes to the query, scoped to
+        this project.
         Returns list of (node_id, similarity_score) tuples, sorted descending.
         """
         query_emb = self.encoder.encode_single(query)
-        return self.vector_store.search_nodes(query_emb, k=k)
+        return self.vector_store.search_nodes(query_emb, project_id=self.project_id, k=k)
 
     def search_chunks(self, query: str, k: int = 5) -> list[tuple[str, float]]:
         query_emb = self.encoder.encode_single(query)
-        return self.vector_store.search_chunks(query_emb, k=k)
+        return self.vector_store.search_chunks(query_emb, project_id=self.project_id, k=k)
 
     def _get_node_embedding(self, node_id: str) -> list[float] | None:
         if node_id in self._embedding_cache:
@@ -371,11 +378,12 @@ class KnowledgeGraph:
     # ---------------------------------------------------------------------------
     def save_evidence(self, evidence: EvidencePath) -> str:
         """Persist an evidence path and return its ID."""
+        evidence.project_id = self.project_id
         return self.store.save_evidence(evidence)
 
     def get_past_evidence(self, question: str) -> list[EvidencePath]:
-        """Retrieves previously saved evidence paths for a question"""
-        return self.store.load_evidence_for_question(question)
+        """Retrieves previously saved evidence paths for a question, scoped to this project"""
+        return self.store.load_evidence_for_question(question, project_id=self.project_id)
 
     def export_to_json(self, output_dir: str = "graph_exports") -> dict:
         """Exoprt the entire knowledge graph to json files."""

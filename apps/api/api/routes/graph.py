@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from apps.api.core.async_engine import AsyncEngine
-from apps.api.dependencies import get_engine
+from apps.api.dependencies import get_engine_for_read
 from apps.api.api.schemas.graph import (
     TraverseRequest,
     EvidenceGraphResponse,
@@ -18,7 +18,7 @@ router = APIRouter(prefix="/graph", tags=["graph"])
 @router.post("/traverse")
 async def traverse_graph(
     req: TraverseRequest,
-    engine: AsyncEngine = Depends(get_engine),
+    engine: AsyncEngine = Depends(get_engine_for_read),
 ):
     visited, edges = await engine.traverse(
         req.start_node_id, req.max_depth, req.direction
@@ -33,7 +33,7 @@ async def traverse_graph(
 async def search_nodes(
     q: str,
     k: int = 5,
-    engine: AsyncEngine = Depends(get_engine),
+    engine: AsyncEngine = Depends(get_engine_for_read),
 ):
     results = await engine.search_nodes(q, k)
     response = []
@@ -51,7 +51,7 @@ async def search_nodes(
 
 
 @router.get("/nodes/{node_id}")
-async def get_node(node_id: str, engine: AsyncEngine = Depends(get_engine)):
+async def get_node(node_id: str, engine: AsyncEngine = Depends(get_engine_for_read)):
     node = await engine.get_node(node_id)
     if not node:
         raise HTTPException(status_code=404, detail="Node not found")
@@ -66,7 +66,7 @@ async def get_node(node_id: str, engine: AsyncEngine = Depends(get_engine)):
 
 
 @router.get("/nodes/{node_id}/edges", response_model=list[NodeEdgeRow])
-async def get_node_edges(node_id: str, engine: AsyncEngine = Depends(get_engine)):
+async def get_node_edges(node_id: str, engine: AsyncEngine = Depends(get_engine_for_read)):
     node = await engine.get_node(node_id)
     if not node:
         raise HTTPException(status_code=404, detail="Node not found")
@@ -97,7 +97,7 @@ async def get_node_edges(node_id: str, engine: AsyncEngine = Depends(get_engine)
 
 
 @router.get("/chunks/{chunk_id}", response_model=ChunkResponse)
-async def get_chunk(chunk_id: str, engine: AsyncEngine = Depends(get_engine)):
+async def get_chunk(chunk_id: str, engine: AsyncEngine = Depends(get_engine_for_read)):
     chunk = await engine.get_chunk(chunk_id)
     if not chunk:
         raise HTTPException(status_code=404, detail="Chunk not found")
@@ -107,7 +107,7 @@ async def get_chunk(chunk_id: str, engine: AsyncEngine = Depends(get_engine)):
 @router.get("/evidence/{evidence_id}")
 async def get_evidence_graph(
     evidence_id: str,
-    engine: AsyncEngine = Depends(get_engine),
+    engine: AsyncEngine = Depends(get_engine_for_read),
 ):
     evidence = await engine.get_evidence_by_id(evidence_id)
     if not evidence:
@@ -121,5 +121,5 @@ async def get_evidence_graph(
 
 
 @router.get("/metrics")
-async def graph_metrics(engine: AsyncEngine = Depends(get_engine)):
+async def graph_metrics(engine: AsyncEngine = Depends(get_engine_for_read)):
     return await engine.get_metrics()

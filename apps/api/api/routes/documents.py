@@ -4,10 +4,11 @@ import tempfile
 from pathlib import Path
 
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
-from fastapi.responses import JSONResponse
 
 from apps.api.core.async_engine import AsyncEngine
-from apps.api.dependencies import get_engine
+from apps.api.dependencies import get_engine_for_read, get_engine_for_write
+from apps.api.core.project_context import require_project_owner
+from apps.api.core.projects_store import Project
 from apps.api.api.schemas.documents import DocumentUploadResponse, DocumentListItem
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -16,7 +17,8 @@ router = APIRouter(prefix="/documents", tags=["documents"])
 @router.post("/upload", response_model=DocumentUploadResponse)
 async def upload_document(
     file: UploadFile = File(...),
-    engine: AsyncEngine = Depends(get_engine),
+    project: Project = Depends(require_project_owner),
+    engine: AsyncEngine = Depends(get_engine_for_write),
 ):
     """Upload a file, ingest into graph, archive to Supabase storage."""
     if not file.filename:
@@ -40,13 +42,15 @@ async def upload_document(
             content = await file.read()
             f.write(content)
 
-        # Ingest into knowledge graph
+        # Ingest into knowledge graph (already scoped to `project` via the
+        # per-project engine returned by get_engine_for_write)
         result = await engine.ingest_file(temp_path, file.filename)
 
-        # Archive original to Supabase if ingestion succeeded
+        # Archive original to Supabase if ingestion succeeded — namespaced
+        # under the project so two projects can't collide on storage paths
         if result.get("success") and result.get("document_id"):
             file_store = engine.file_store
-            storage_path = f"documents/{result['document_id']}/{file.filename}"
+            storage_path = f"documents/{project.id}/{result['document_id']}/{file.filename}"
             await file_store.upload(temp_path, storage_path)
 
         return DocumentUploadResponse(
@@ -71,7 +75,7 @@ async def upload_document(
 
 
 @router.get("/", response_model=list[DocumentListItem])
-async def list_documents(engine: AsyncEngine = Depends(get_engine)):
+async def list_documents(engine: AsyncEngine = Depends(get_engine_for_read)):
     docs = await engine.list_documents()
     return [
         DocumentListItem(
@@ -85,7 +89,7 @@ async def list_documents(engine: AsyncEngine = Depends(get_engine)):
 
 
 @router.get("/{doc_id}")
-async def get_document(doc_id: str, engine: AsyncEngine = Depends(get_engine)):
+async def get_document(doc_id: str, engine: AsyncEngine = Depends(get_engine_for_read)):
     doc = await engine.get_document(doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -99,6 +103,10 @@ async def get_document(doc_id: str, engine: AsyncEngine = Depends(get_engine)):
 
 
 @router.delete("/{doc_id}")
-async def delete_document(doc_id: str, engine: AsyncEngine = Depends(get_engine)):
+async def delete_document(
+    doc_id: str,
+    project: Project = Depends(require_project_owner),
+    engine: AsyncEngine = Depends(get_engine_for_write),
+):
     # Will cascade delete in graph_store
     raise HTTPException(status_code=501, detail="Not yet implemented")

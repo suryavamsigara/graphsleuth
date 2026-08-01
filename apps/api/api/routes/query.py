@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sse_starlette.sse import EventSourceResponse
 
 from apps.api.core.async_engine import AsyncEngine
-from apps.api.dependencies import get_engine
+from apps.api.dependencies import get_engine_for_read
 from apps.api.api.schemas.query import QueryRequest
 
 router = APIRouter(prefix="/query", tags=["query"])
@@ -22,7 +22,7 @@ async def _stream_answer(engine: AsyncEngine, req: QueryRequest):
 @router.post("/stream")
 async def query_stream(
     req: QueryRequest,
-    engine: AsyncEngine = Depends(get_engine),
+    engine: AsyncEngine = Depends(get_engine_for_read),
 ):
     """Stream the agent's reasoning and answer via SSE."""
     return EventSourceResponse(_stream_answer(engine, req), media_type="text/event-stream")
@@ -31,7 +31,7 @@ async def query_stream(
 @router.post("/")
 async def query_sync(
     req: QueryRequest,
-    engine: AsyncEngine = Depends(get_engine),
+    engine: AsyncEngine = Depends(get_engine_for_read),
 ):
     """Non-streaming query: collects all events and returns final answer."""
     answer = ""

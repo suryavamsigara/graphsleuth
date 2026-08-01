@@ -12,6 +12,7 @@ class Chunk:
     text: str
     document_id: str
     index: int = 0 # position within the document
+    project_id: str | None = None
 
 
 @dataclass
@@ -22,6 +23,7 @@ class Document:
     checksum: str
     ingested_at: str
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    project_id: str | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -30,6 +32,7 @@ class Document:
             "name": self.name,
             "checksum": self.checksum,
             "ingested_at": self.ingested_at,
+            "project_id": self.project_id,
         }
 
     @classmethod
@@ -40,6 +43,7 @@ class Document:
             name=d["name"],
             checksum=d["checksum"],
             ingested_at=d["ingested_at"],
+            project_id=d.get("project_id"),
         )
 
 
@@ -57,7 +61,8 @@ class EvidencePath:
     confidence: float = 0.0
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    
+    project_id: str | None = None
+
     def to_dict(self) -> dict:
         return {
             "id": self.id,
@@ -69,6 +74,7 @@ class EvidencePath:
             "answer": self.answer,
             "confidence": self.confidence,
             "created_at": self.created_at,
+            "project_id": self.project_id,
         }
 
     @classmethod
@@ -91,4 +97,5 @@ class EvidencePath:
             answer=data.get("answer", ""),
             confidence=float(data.get("confidence") or 0.0),
             created_at=str(data["created_at"]),
+            project_id=data.get("project_id"),
         )

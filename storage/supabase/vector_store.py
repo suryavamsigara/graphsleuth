@@ -12,19 +12,25 @@ class SupabaseVectorStore(VectorStore):
     def upsert_chunk_embedding(self, chunk_id: str, embedding: list[float]) -> None:
         self.client.table("chunks").update({"embedding": embedding}).eq("id", chunk_id).execute()
 
-    def search_nodes(self, query_embedding: list[float], k: int = 5, threshold: float = 0.0) -> list[tuple[str, float]]:
+    def search_nodes(
+        self, query_embedding: list[float], project_id: str, k: int = 5, threshold: float = 0.0
+    ) -> list[tuple[str, float]]:
         resp = self.client.rpc("match_nodes", {
             "query_embedding": query_embedding,
             "match_threshold": threshold,
             "match_count": k,
+            "filter_project_id": project_id,
         }).execute()
         return [(row["id"], row["similarity"]) for row in resp.data]
 
-    def search_chunks(self, query_embedding: list[float], k: int = 5, threshold: float = 0.0) -> list[tuple[str, float]]:
+    def search_chunks(
+        self, query_embedding: list[float], project_id: str, k: int = 5, threshold: float = 0.0
+    ) -> list[tuple[str, float]]:
         resp = self.client.rpc("match_chunks", {
             "query_embedding": query_embedding,
             "match_threshold": threshold,
             "match_count": k,
+            "filter_project_id": project_id,
         }).execute()
         return [(row["id"], row["similarity"]) for row in resp.data]
 
@@ -42,7 +48,7 @@ class SupabaseVectorStore(VectorStore):
         if not resp.data:
             return None
         raw_emb = resp.data[0]["embedding"]
-        
+
         if isinstance(raw_emb, str):
             return json.loads(raw_emb)
         return list(raw_emb)

@@ -3,13 +3,13 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from apps.api.api.routes import documents, query, graph, health
+from apps.api.api.routes import documents, query, graph, health, projects
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    from apps.api.dependencies import get_engine
-    _ = get_engine()
+    from apps.api.dependencies import get_supabase_client
+    _ = get_supabase_client()
     yield
     # Shutdown: close stores
     from apps.api.dependencies import get_graph_store, get_vector_store
@@ -33,6 +33,7 @@ app.add_middleware(
 )
 
 app.include_router(health.router)
+app.include_router(projects.router)
 app.include_router(documents.router)
 app.include_router(query.router)
 app.include_router(graph.router)

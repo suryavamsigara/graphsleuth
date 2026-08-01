@@ -35,6 +35,13 @@ class IngestionPipeline:
     def ingest_file(self, file_path: str, file_name: str | None = None) -> dict:
         """
         Ingests a single file into the knowledge graph.
+
+        No project_id parameter here. `self.kg` is a project-scoped
+        KnowledgeGraph instance, registering the document, adding nodes/edges,
+        and tagging chunks all inherit `self.kg.project_id` implicitly.
+        If IngestionPipeline ever needs to write to a project different
+        from the one it was constructed for, it should be re-fetched from the
+        per-project dependency cache instead of taking an override here.
         """
         file_name = file_name or os.path.basename(file_path)
         try:
@@ -81,12 +88,13 @@ class IngestionPipeline:
             total_edges = 0
 
             for i, (chunk_text, chunk_id) in enumerate(zip(chunk_texts, chunk_ids)):
-                # Store chunk
+                # Store chunk, tagged with this pipeline's project
                 chunk = Chunk(
                     id=chunk_id,
                     text=chunk_text,
                     document_id=doc_id,
-                    index=i
+                    index=i,
+                    project_id=self.kg.project_id,
                 )
                 self.kg.add_chunk(chunk)
 
@@ -102,7 +110,7 @@ class IngestionPipeline:
                 print("New edges: \n", new_edges)
                 print(20*"=")
 
-                # Merge deduplicated nodes
+                # Merge deduplicated nodes (kg.add_node tags project_id)
                 for node in new_nodes:
                     if node.id in self.kg.nodes:
                         self.kg.update_node_chunks(node.id, chunk_id)
@@ -111,7 +119,7 @@ class IngestionPipeline:
                         self.kg.add_node(node)
                         total_nodes += 1
 
-                # Add edges
+                # Add edges (kg.create_edge tags project_id)
                 for edge in new_edges:
                     try:
                         if self.kg.create_edge(edge):

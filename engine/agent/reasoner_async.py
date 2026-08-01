@@ -85,8 +85,7 @@ class AsyncGraphReasoner:
         just this question.
 
         `top_k` / `max_depth`, when given, override the constructor
-        defaults for just this call — this is what the chat panel's
-        "search depth" dropdown drives.
+        defaults for just this call.
         """
         resolved_top_k = top_k if top_k is not None else self.top_k
         resolved_max_depth = max_depth if max_depth is not None else self.max_depth

@@ -11,6 +11,8 @@ class Edge:
     source_chunk_id: str
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    # Set by KnowledgeGraph.create_edge() right before persisting.
+    project_id: str | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -20,6 +22,7 @@ class Edge:
             "relation": self.relation,
             "source_chunk_id": self.source_chunk_id,
             "created_at": self.created_at,
+            "project_id": self.project_id,
         }
 
     @classmethod
@@ -30,5 +33,6 @@ class Edge:
             target_id=d["target_id"],
             relation=d["relation"],
             source_chunk_id=d["source_chunk_id"],
-            created_at=d["created_at"]
+            created_at=d["created_at"],
+            project_id=d.get("project_id"),
         )

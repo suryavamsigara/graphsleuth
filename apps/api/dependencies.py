@@ -1,6 +1,7 @@
 import os
 from functools import lru_cache
 from dotenv import load_dotenv
+from fastapi import Depends
 from supabase import Client, create_client
 
 from engine.graph.knowledge_graph import KnowledgeGraph
@@ -12,6 +13,8 @@ from storage.supabase.graph_store import SupabaseGraphStore
 from storage.supabase.vector_store import SupabaseVectorStore
 from storage.supabase.file_store import SupabaseFileStore
 from apps.api.core.async_engine import AsyncEngine
+from apps.api.core.project_context import get_current_project, require_project_owner
+from apps.api.core.projects_store import Project
 
 load_dotenv()
 
@@ -49,8 +52,22 @@ def get_encoder() -> EmbeddingEncoder:
 
 
 @lru_cache
-def get_knowledge_graph() -> KnowledgeGraph:
+def get_extractor() -> EntityExtractor:
+    return EntityExtractor(
+        model_name=os.getenv("LLM_MODEL", "deepseek-v4-flash"),
+        use_local=os.getenv("USE_LOCAL_LLM", "false").lower() == "true",
+        encoder=get_encoder(),
+    )
+
+
+# maxsize caps how many projects' graphs stay warm in memory at once
+_PROJECT_CACHE_SIZE = int(os.getenv("PROJECT_CACHE_SIZE", "64"))
+
+
+@lru_cache(maxsize=_PROJECT_CACHE_SIZE)
+def get_knowledge_graph(project_id: str) -> KnowledgeGraph:
     return KnowledgeGraph(
+        project_id=project_id,
         store=get_graph_store(),
         vector_store=get_vector_store(),
         encoder=get_encoder(),
@@ -60,10 +77,10 @@ def get_knowledge_graph() -> KnowledgeGraph:
     )
 
 
-@lru_cache
-def get_agent() -> AsyncGraphReasoner:
+@lru_cache(maxsize=_PROJECT_CACHE_SIZE)
+def get_agent(project_id: str) -> AsyncGraphReasoner:
     return AsyncGraphReasoner(
-        kg=get_knowledge_graph(),
+        kg=get_knowledge_graph(project_id),
         encoder=get_encoder(),
         model_name=os.getenv("LLM_MODEL", "deepseek-v4-flash"),
         use_openai=os.getenv("USE_OPENAI", "true").lower() == "true",
@@ -72,28 +89,27 @@ def get_agent() -> AsyncGraphReasoner:
     )
 
 
-@lru_cache
-def get_extractor() -> EntityExtractor:
-    return EntityExtractor(
-        model_name=os.getenv("LLM_MODEL", "deepseek-v4-flash"),
-        use_local=os.getenv("USE_LOCAL_LLM", "false").lower() == "true",
-        encoder=get_encoder(),
-    )
-
-
-@lru_cache
-def get_ingestion_pipeline() -> IngestionPipeline:
+@lru_cache(maxsize=_PROJECT_CACHE_SIZE)
+def get_ingestion_pipeline(project_id: str) -> IngestionPipeline:
     return IngestionPipeline(
-        kg=get_knowledge_graph(),
+        kg=get_knowledge_graph(project_id),
         extractor=get_extractor(),
     )
 
 
-@lru_cache
-def get_engine() -> AsyncEngine:
+@lru_cache(maxsize=_PROJECT_CACHE_SIZE)
+def get_engine(project_id: str) -> AsyncEngine:
     return AsyncEngine(
-        kg=get_knowledge_graph(),
-        pipeline=get_ingestion_pipeline(),
-        agent=get_agent(),
+        kg=get_knowledge_graph(project_id),
+        pipeline=get_ingestion_pipeline(project_id),
+        agent=get_agent(project_id),
         file_store=get_file_store(),
     )
+
+
+def get_engine_for_read(project: Project = Depends(get_current_project)) -> AsyncEngine:
+    return get_engine(project.id)
+
+
+def get_engine_for_write(project: Project = Depends(require_project_owner)) -> AsyncEngine:
+    return get_engine(project.id)
