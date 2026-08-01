@@ -17,12 +17,13 @@ interface QueuedFile {
 }
 
 interface IngestModalProps {
+  projectId: string;
   open: boolean;
   onClose: () => void;
   onIngested: () => void; // refetch metrics/documents after a run
 }
 
-export default function IngestModal({ open, onClose, onIngested }: IngestModalProps) {
+export default function IngestModal({ projectId, open, onClose, onIngested }: IngestModalProps) {
   const [files, setFiles] = useState<QueuedFile[]>([]);
   const [dragActive, setDragActive] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -42,7 +43,7 @@ export default function IngestModal({ open, onClose, onIngested }: IngestModalPr
     for (const qf of pending) {
       setFiles((prev) => prev.map((f) => (f.id === qf.id ? { ...f, status: "uploading" } : f)));
       try {
-        const result = await api.documents.upload(qf.file);
+        const result = await api.documents.upload(projectId, qf.file);
         if (!result.success) throw new Error(result.error || "Ingestion failed");
         setFiles((prev) => prev.map((f) => (f.id === qf.id ? { ...f, status: "done", result } : f)));
       } catch (e: any) {
@@ -50,7 +51,7 @@ export default function IngestModal({ open, onClose, onIngested }: IngestModalPr
       }
     }
     onIngested();
-  }, [files, onIngested]);
+  }, [files, projectId, onIngested]);
 
   if (!open) return null;
 

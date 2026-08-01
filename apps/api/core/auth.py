@@ -1,11 +1,22 @@
 import os
 import jwt
+from dotenv import load_dotenv
 from dataclasses import dataclass
 from fastapi import Header, HTTPException
 
-# Supabase issues HS256 JWTs signed with the project's JWT secret.
-SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET")
+load_dotenv()
 
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+JWKS_URL = f"{SUPABASE_URL.rstrip('/')}/auth/v1/.well-known/jwks.json"
+SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
+
+jwk_client = jwt.PyJWKClient(
+    JWKS_URL,
+    headers={
+        "apikey": SUPABASE_ANON_KEY or "",
+        "Authorization": f"Bearer {SUPABASE_ANON_KEY}" if SUPABASE_ANON_KEY else ""
+    }
+)
 
 @dataclass
 class AuthedUser:
@@ -14,13 +25,13 @@ class AuthedUser:
 
 
 def _decode(token: str) -> AuthedUser:
-    if not SUPABASE_JWT_SECRET:
-        raise RuntimeError("SUPABASE_JWT_SECRET is not set")
     try:
+        signing_key = jwk_client.get_signing_key_from_jwt(token)
+        
         payload = jwt.decode(
             token,
-            SUPABASE_JWT_SECRET,
-            algorithms=["HS256"],
+            signing_key.key,
+            algorithms=["ES256"],
             audience="authenticated",
         )
     except jwt.PyJWTError as e:

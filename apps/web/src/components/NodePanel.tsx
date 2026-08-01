@@ -22,12 +22,13 @@ interface EdgeRow {
 }
 
 interface NodePanelProps {
+  projectId: string;
   node: NodeData | null;
   onClose: () => void;
   onNavigateNode?: (nodeId: string) => void; // clicking a connected entity in the edges table
 }
 
-export default function NodePanel({ node, onClose, onNavigateNode }: NodePanelProps) {
+export default function NodePanel({ projectId, node, onClose, onNavigateNode }: NodePanelProps) {
   const [aliases, setAliases] = useState<string[]>([]);
   const [edges, setEdges] = useState<EdgeRow[] | null>(null);
   const [chunks, setChunks] = useState<{ id: string; text: string }[] | null>(null);
@@ -45,14 +46,14 @@ export default function NodePanel({ node, onClose, onNavigateNode }: NodePanelPr
 
     setLoadingEdges(true);
     api.graph
-      .getNode(node.id)
+      .getNode(projectId, node.id)
       .then((full) => {
         if (cancelled) return;
         setAliases(full.aliases ?? []);
         // fetch each source chunk lazily, collapsed by default
         setLoadingChunks(true);
         Promise.all(
-          (full.source_chunk_ids ?? []).slice(0, 20).map((cid: string) => api.graph.getChunk(cid).catch(() => null))
+          (full.source_chunk_ids ?? []).slice(0, 20).map((cid: string) => api.graph.getChunk(projectId, cid).catch(() => null))
         ).then((results) => {
           if (cancelled) return;
           setChunks(results.filter(Boolean) as { id: string; text: string }[]);
@@ -62,7 +63,7 @@ export default function NodePanel({ node, onClose, onNavigateNode }: NodePanelPr
       .catch(() => {});
 
     api.graph
-      .getNodeEdges(node.id)
+      .getNodeEdges(projectId, node.id)
       .then((rows) => !cancelled && setEdges(rows))
       .catch(() => !cancelled && setEdges([]))
       .finally(() => !cancelled && setLoadingEdges(false));
@@ -70,7 +71,7 @@ export default function NodePanel({ node, onClose, onNavigateNode }: NodePanelPr
     return () => {
       cancelled = true;
     };
-  }, [node?.id]);
+  }, [projectId, node?.id]);
 
   return (
     <AnimatePresence>

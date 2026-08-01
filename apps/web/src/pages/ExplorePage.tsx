@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Search, Loader2 } from "lucide-react";
 import { api } from "../lib/api";
+import { useAuth } from "../lib/authContext";
 import Header from "../components/Header";
 import ResizableSplit from "../components/ResizableSplit";
 import ChatPanel from "../components/ChatPanel";
@@ -23,83 +24,111 @@ interface GraphEdge {
   label: string;
 }
 
-export default function ExplorePage() {
+interface ExplorePageProps {
+  projectId: string;
+  onGoHome: () => void;
+  onSelectProject: (id: string) => void;
+}
+
+export default function ExplorePage({ projectId, onGoHome, onSelectProject }: ExplorePageProps) {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [graphData, setGraphData] = useState<{ nodes: GraphNode[]; edges: GraphEdge[] }>({ nodes: [], edges: [] });
   const [evidencePath, setEvidencePath] = useState<EvidencePath | null>(null);
   const [ingestOpen, setIngestOpen] = useState(false);
-  const [workspaceId, setWorkspaceId] = useState("default");
 
-  const { data: workspaces } = useQuery({
-    queryKey: ["workspaces"],
-    queryFn: api.workspaces.list,
+  // Reset the board whenever the active case changes
+  useEffect(() => {
+    setSelectedNodeId(null);
+    setSelectedNode(null);
+    setGraphData({ nodes: [], edges: [] });
+    setEvidencePath(null);
+  }, [projectId]);
+
+  const { data: projects } = useQuery({
+    queryKey: ["projects", user?.id ?? "anon"],
+    queryFn: api.projects.list,
   });
+  const activeProject = projects?.find((p) => p.id === projectId);
 
   const { data: metrics, isLoading: metricsLoading } = useQuery({
-    queryKey: ["graph-metrics"],
-    queryFn: api.graph.metrics,
+    queryKey: ["graph-metrics", projectId],
+    queryFn: () => api.graph.metrics(projectId),
     refetchInterval: 15_000,
   });
 
   const { data: searchResults, isLoading: searching } = useQuery({
-    queryKey: ["node-search", searchTerm],
-    queryFn: () => api.graph.searchNodes(searchTerm, 10),
+    queryKey: ["node-search", projectId, searchTerm],
+    queryFn: () => api.graph.searchNodes(projectId, searchTerm, 10),
     enabled: searchTerm.length > 2,
   });
 
-  const loadNodeNeighborhood = useCallback(async (nodeId: string) => {
-    setSelectedNodeId(nodeId);
-    setEvidencePath(null);
+  const loadNodeNeighborhood = useCallback(
+    async (nodeId: string) => {
+      setSelectedNodeId(nodeId);
+      setEvidencePath(null);
 
-    const node = await api.graph.getNode(nodeId);
-    setSelectedNode({ id: node.id, label: node.name, type: node.node_type, description: node.description });
+      const node = await api.graph.getNode(projectId, nodeId);
+      setSelectedNode({ id: node.id, label: node.name, type: node.node_type, description: node.description });
 
-    const traverse = await api.graph.traverse(nodeId, 2, "both");
-    const nodes: GraphNode[] = [{ id: node.id, label: node.name, type: node.node_type, description: node.description, is_entry: true }];
-    const edges: GraphEdge[] = [];
-    const seen = new Set([node.id]);
+      const traverse = await api.graph.traverse(projectId, nodeId, 2, "both");
+      const nodes: GraphNode[] = [
+        { id: node.id, label: node.name, type: node.node_type, description: node.description, is_entry: true },
+      ];
+      const edges: GraphEdge[] = [];
+      const seen = new Set([node.id]);
 
-    for (const e of traverse.edges) {
-      for (const id of [e.source_id, e.target_id]) {
-        if (seen.has(id)) continue;
-        const n = await api.graph.getNode(id).catch(() => null);
-        if (!n) continue;
-        seen.add(id);
-        nodes.push({ id: n.id, label: n.name, type: n.node_type, description: n.description });
+      for (const e of traverse.edges) {
+        for (const id of [e.source_id, e.target_id]) {
+          if (seen.has(id)) continue;
+          const n = await api.graph.getNode(projectId, id).catch(() => null);
+          if (!n) continue;
+          seen.add(id);
+          nodes.push({ id: n.id, label: n.name, type: n.node_type, description: n.description });
+        }
+        edges.push({ id: e.id, source: e.source_id, target: e.target_id, label: e.relation });
       }
-      edges.push({ id: e.id, source: e.source_id, target: e.target_id, label: e.relation });
-    }
 
-    setGraphData({ nodes, edges });
-  }, []);
+      setGraphData({ nodes, edges });
+    },
+    [projectId]
+  );
 
   // When a chat answer completes, pull the evidence graph and light up the trail
-  const handleEvidence = useCallback(async (evidenceId: string) => {
-    try {
-      const graph = await api.graph.evidenceGraph(evidenceId);
-      const nodes: GraphNode[] = graph.nodes.map((n: any) => ({ ...n, is_entry: n.is_entry }));
-      setGraphData({ nodes, edges: graph.edges });
-      setEvidencePath({ nodeIds: nodes.map((n) => n.id), edgeIds: graph.edges.map((e: any) => e.id) });
-      setSelectedNode(null);
-      setSelectedNodeId(null);
-    } catch {
-      // evidence graph fetch failing shouldn't break the chat turn
-    }
-  }, []);
+  const handleEvidence = useCallback(
+    async (evidenceId: string) => {
+      try {
+        const graph = await api.graph.evidenceGraph(projectId, evidenceId);
+        const nodes: GraphNode[] = graph.nodes.map((n: any) => ({ ...n, is_entry: n.is_entry }));
+        setGraphData({ nodes, edges: graph.edges });
+        setEvidencePath({ nodeIds: nodes.map((n) => n.id), edgeIds: graph.edges.map((e: any) => e.id) });
+        setSelectedNode(null);
+        setSelectedNodeId(null);
+      } catch {
+        // evidence graph fetch failing shouldn't break the chat turn
+      }
+    },
+    [projectId]
+  );
 
   const refetchMetrics = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: ["graph-metrics"] });
-  }, [queryClient]);
+    queryClient.invalidateQueries({ queryKey: ["graph-metrics", projectId] });
+  }, [queryClient, projectId]);
+
+  const canIngest = !!activeProject?.is_mine;
 
   return (
     <div className="flex flex-col h-screen bg-[var(--void)]">
       <Header
-        workspaces={workspaces ?? [{ id: "default", name: "Untitled Case" }]}
-        activeWorkspaceId={workspaceId}
-        onSelectWorkspace={setWorkspaceId}
+        projects={projects ?? []}
+        activeProject={activeProject}
+        onSelectProject={(id) => {
+          if (id !== projectId) onSelectProject(id);
+        }}
+        onGoHome={onGoHome}
         metrics={
           metrics && {
             nodes: metrics.node_count,
@@ -110,11 +139,12 @@ export default function ExplorePage() {
         }
         metricsLoading={metricsLoading}
         onIngestClick={() => setIngestOpen(true)}
+        canIngest={canIngest}
       />
 
       <div className="flex-1 min-h-0">
         <ResizableSplit
-          left={<ChatPanel onEvidence={handleEvidence} />}
+          left={<ChatPanel projectId={projectId} onEvidence={handleEvidence} />}
           right={
             <div className="relative w-full h-full p-3">
               <div className="absolute top-6 left-6 right-6 z-30">
@@ -158,13 +188,20 @@ export default function ExplorePage() {
                 selectedNodeId={selectedNodeId}
                 evidencePath={evidencePath}
               />
-              <NodePanel node={selectedNode} onClose={() => setSelectedNode(null)} onNavigateNode={loadNodeNeighborhood} />
+              <NodePanel
+                projectId={projectId}
+                node={selectedNode}
+                onClose={() => setSelectedNode(null)}
+                onNavigateNode={loadNodeNeighborhood}
+              />
             </div>
           }
         />
       </div>
 
-      <IngestModal open={ingestOpen} onClose={() => setIngestOpen(false)} onIngested={refetchMetrics} />
+      {canIngest && (
+        <IngestModal projectId={projectId} open={ingestOpen} onClose={() => setIngestOpen(false)} onIngested={refetchMetrics} />
+      )}
     </div>
   );
 }

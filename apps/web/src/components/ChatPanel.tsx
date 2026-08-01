@@ -17,6 +17,7 @@ interface ChatMessage {
 }
 
 interface ChatPanelProps {
+  projectId: string;
   onEvidence: (evidenceId: string) => void; // tells ExplorePage to render the resulting evidence graph
 }
 
@@ -34,7 +35,7 @@ const CONFIDENCE_OPTIONS = [
   { value: 0.65, label: "Very strict · 0.65" },
 ];
 
-export default function ChatPanel({ onEvidence }: ChatPanelProps) {
+export default function ChatPanel({ projectId, onEvidence }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [maxDepth, setMaxDepth] = useState(2);
@@ -62,6 +63,7 @@ export default function ChatPanel({ onEvidence }: ChatPanelProps) {
 
     try {
       await api.query.streamFetch(
+        projectId,
         question,
         (event) => {
           setMessages((prev) =>
@@ -106,12 +108,12 @@ export default function ChatPanel({ onEvidence }: ChatPanelProps) {
       setBusy(false);
       setMessages((prev) => prev.map((m) => (m.id === assistantId ? { ...m, streaming: false } : m)));
     }
-  }, [input, busy, maxDepth, confidenceThreshold, onEvidence, scrollToBottom]);
+  }, [input, busy, maxDepth, confidenceThreshold, projectId, onEvidence, scrollToBottom]);
 
   return (
     <div className="flex flex-col h-full bg-[var(--panel)]">
       <div className="flex items-center gap-2 px-3 py-2.5 border-b border-[var(--hairline)] shrink-0">
-        <span className="eyebrow mr-1">Settings</span>
+        <span className="eyebrow mr-1">Interview settings</span>
 
         <select
           value={maxDepth}

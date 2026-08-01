@@ -86,6 +86,9 @@ export default function GraphViewer({
             "transition-duration": 0.25,
           } as cytoscape.Css.Node,
         },
+        // Entry nodes read as map pins: filled dot + a soft red halo.
+        // (Cytoscape core has no `shadow-*` style props — `overlay-*` is
+        // the real halo mechanism, so that's what actually renders one.)
         {
           selector: "node[?is_entry]",
           style: {
@@ -116,6 +119,7 @@ export default function GraphViewer({
             "border-color": (ele: any) => NODE_COLORS[ele.data("type") as string] || "#7d818c",
           },
         },
+        // Redacted: outside the current evidence path
         {
           selector: "node.redacted",
           style: {
@@ -148,7 +152,7 @@ export default function GraphViewer({
           selector: "edge.redacted",
           style: { "line-opacity": 0.08, "text-opacity": 0.15 },
         },
-        // The traversed path, lit up like red string on cork
+        // The evidence string: the traversed path, lit up like red string on cork
         {
           selector: "edge.evidence",
           style: {
@@ -255,7 +259,7 @@ export default function GraphViewer({
     }
   }, [nodes, edges, isReady, selectedNodeId]);
 
-  // Apply / clear the traversal-path highlight (dim everything else, light the trail)
+  // Apply / clear the evidence-path highlight (dim everything else, light the trail)
   useEffect(() => {
     const cy = cyRef.current;
     if (!cy || !isReady) return;
