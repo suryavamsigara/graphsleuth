@@ -1,7 +1,7 @@
 import { Plus } from "lucide-react";
 import WorkspaceSwitcher from "./WorkspaceSwitcher";
 import MetricsPill from "./MetricsPill";
-import SignInWidget from "./SignInWidget";
+import UserMenu from "./UserMenu";
 import { ProjectSummary } from "../lib/api";
 
 interface HeaderProps {
@@ -57,7 +57,7 @@ export default function Header({
           </button>
         )}
 
-        <SignInWidget />
+        <UserMenu onSignInClick={() => { window.location.hash = "#/login"; }} />
       </div>
     </header>
   );

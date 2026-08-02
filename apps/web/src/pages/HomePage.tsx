@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Plus, FolderSearch, Globe, Lock } from "lucide-react";
 import { api, ProjectSummary } from "../lib/api";
 import { useAuth } from "../lib/authContext";
-import SignInWidget from "../components/SignInWidget";
+import UserMenu from "../components/UserMenu";
 import NewCaseModal from "../components/NewCaseModal";
 import { cn } from "../lib/utils";
 
@@ -53,7 +53,7 @@ export default function HomePage({ onOpenProject }: HomePageProps) {
           </div>
           <span className="mono text-[13px] font-semibold tracking-tight text-[var(--ink)]">GraphSleuth</span>
         </div>
-        <SignInWidget />
+        <UserMenu onSignInClick={() => { window.location.hash = "#/login"; }} />
       </header>
 
       <main className="max-w-4xl mx-auto px-6 py-10">

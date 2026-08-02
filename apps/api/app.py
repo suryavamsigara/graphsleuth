@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from apps.api.api.routes import documents, query, graph, health, projects
+from apps.api.api.routes import documents, query, graph, health, projects, chat
 
 
 @asynccontextmanager
@@ -37,6 +37,7 @@ app.include_router(projects.router)
 app.include_router(documents.router)
 app.include_router(query.router)
 app.include_router(graph.router)
+app.include_router(chat.router)
 
 
 @app.get("/")

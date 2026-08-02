@@ -144,7 +144,7 @@ export default function ExplorePage({ projectId, onGoHome, onSelectProject }: Ex
 
       <div className="flex-1 min-h-0">
         <ResizableSplit
-          left={<ChatPanel projectId={projectId} onEvidence={handleEvidence} />}
+          left={<ChatPanel key={projectId} projectId={projectId} onEvidence={handleEvidence} />}
           right={
             <div className="relative w-full h-full p-3">
               <div className="absolute top-6 left-6 right-6 z-30">

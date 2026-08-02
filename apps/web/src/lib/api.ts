@@ -137,6 +137,22 @@ export const api = {
       ),
   },
 
+  chat: {
+    list: (projectId: string): Promise<
+      {
+        id: string;
+        role: "user" | "assistant";
+        content: string;
+        steps: ReasoningStep[];
+        confidence: number | null;
+        latency_ms: number | null;
+        evidence_id: string | null;
+        created_at: string;
+      }[]
+    > => fetchJson("/chat/messages", {}, projectId),
+    clear: (projectId: string) => fetchJson("/chat/messages", { method: "DELETE" }, projectId),
+  },
+
   graph: {
     metrics: (projectId: string) => fetchJson("/graph/metrics", {}, projectId),
     searchNodes: (projectId: string, q: string, k = 5) =>

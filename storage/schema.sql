@@ -1,5 +1,8 @@
 CREATE EXTENSION IF NOT EXISTS vector;
 
+-- -----------------------------------------------------------------------------
+-- Identity
+-- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS profiles (
     id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
     display_name TEXT,
@@ -21,7 +24,9 @@ CREATE TRIGGER on_auth_user_created
     AFTER INSERT ON auth.users
     FOR EACH ROW EXECUTE FUNCTION handle_new_user();
 
-
+-- -----------------------------------------------------------------------------
+-- Projects
+-- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS projects (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
@@ -41,6 +46,7 @@ CREATE TABLE IF NOT EXISTS documents (
     name TEXT NOT NULL,
     checksum TEXT NOT NULL,
     ingested_at TIMESTAMPTZ DEFAULT NOW(),
+    -- same file can exist in two different projects; uniqueness is per-project
     UNIQUE (checksum, project_id)
 );
 
@@ -89,6 +95,23 @@ CREATE TABLE IF NOT EXISTS evidence_paths (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Chat transcript, persisted only for signed-in users
+CREATE TABLE IF NOT EXISTS chat_messages (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+    content TEXT NOT NULL,
+    steps JSONB DEFAULT '[]',
+    confidence REAL,
+    latency_ms REAL,
+    evidence_id UUID REFERENCES evidence_paths(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- -----------------------------------------------------------------------------
+-- Indexes
+-- -----------------------------------------------------------------------------
 -- Vector indexes
 CREATE INDEX IF NOT EXISTS idx_nodes_embedding
 ON nodes
@@ -105,6 +128,10 @@ CREATE INDEX IF NOT EXISTS idx_edges_project ON edges (project_id);
 CREATE INDEX IF NOT EXISTS idx_chunks_project ON chunks (project_id);
 CREATE INDEX IF NOT EXISTS idx_documents_project ON documents (project_id);
 CREATE INDEX IF NOT EXISTS idx_evidence_project ON evidence_paths (project_id);
+
+
+CREATE INDEX IF NOT EXISTS idx_chat_messages_project_user
+ON chat_messages (project_id, user_id, created_at);
 
 -- Standard performance indexes
 CREATE INDEX IF NOT EXISTS idx_edges_source ON edges (source_id);
@@ -178,6 +205,29 @@ ALTER TABLE chunks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE nodes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE edges ENABLE ROW LEVEL SECURITY;
 ALTER TABLE evidence_paths ENABLE ROW LEVEL SECURITY;
+ALTER TABLE chat_messages ENABLE ROW LEVEL SECURITY;
+
+-- chat_messages gets its own policies rather than joining the shared loop
+-- below: every other table is "accessible if the project is", but a chat
+-- transcript is additionally private to the person who wrote it, even in
+-- a public/shared project — you shouldn't see a stranger's questions.
+DROP POLICY IF EXISTS "chat_messages: read own" ON chat_messages;
+CREATE POLICY "chat_messages: read own" ON chat_messages
+    FOR SELECT USING (
+        user_id = auth.uid()
+        AND project_id IN (SELECT id FROM projects WHERE is_public OR owner_id = auth.uid())
+    );
+
+DROP POLICY IF EXISTS "chat_messages: insert own" ON chat_messages;
+CREATE POLICY "chat_messages: insert own" ON chat_messages
+    FOR INSERT WITH CHECK (
+        user_id = auth.uid()
+        AND project_id IN (SELECT id FROM projects WHERE is_public OR owner_id = auth.uid())
+    );
+
+DROP POLICY IF EXISTS "chat_messages: delete own" ON chat_messages;
+CREATE POLICY "chat_messages: delete own" ON chat_messages
+    FOR DELETE USING (user_id = auth.uid());
 
 DROP POLICY IF EXISTS "profiles are readable by anyone" ON profiles;
 CREATE POLICY "profiles are readable by anyone" ON profiles

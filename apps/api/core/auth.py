@@ -27,7 +27,7 @@ class AuthedUser:
 def _decode(token: str) -> AuthedUser:
     try:
         signing_key = jwk_client.get_signing_key_from_jwt(token)
-        
+
         payload = jwt.decode(
             token,
             signing_key.key,

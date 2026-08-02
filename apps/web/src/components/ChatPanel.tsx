@@ -1,6 +1,7 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowUp, Loader2 } from "lucide-react";
 import { api, ReasoningStep } from "../lib/api";
+import { useAuth } from "../lib/authContext";
 import ReasoningTrail from "./ReasoningTrail";
 import { cn } from "../lib/utils";
 
@@ -36,18 +37,63 @@ const CONFIDENCE_OPTIONS = [
 ];
 
 export default function ChatPanel({ projectId, onEvidence }: ChatPanelProps) {
+  const { user } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const [input, setInput] = useState("");
   const [maxDepth, setMaxDepth] = useState(2);
   const [confidenceThreshold, setConfidenceThreshold] = useState(0.35);
   const [busy, setBusy] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // Load this user's persisted transcript for this project. Anonymous
+  // visitors never get history back (nothing was saved for them either —
+  // see query.py), so this only fires when signed in.
+  useEffect(() => {
+    let cancelled = false;
+    setHistoryLoaded(false);
+    setMessages([]);
+
+    if (!user) {
+      setHistoryLoaded(true);
+      return;
+    }
+
+    api.chat
+      .list(projectId)
+      .then((rows) => {
+        if (cancelled) return;
+        setMessages(
+          rows.map((r) => ({
+            id: r.id,
+            role: r.role,
+            text: r.content,
+            steps: r.steps ?? [],
+            confidence: r.confidence ?? undefined,
+            latencyMs: r.latency_ms ?? undefined,
+            evidenceId: r.evidence_id ?? undefined,
+          }))
+        );
+      })
+      .catch(() => {
+        // no history yet, or the request failed — either way, start fresh
+      })
+      .finally(() => !cancelled && setHistoryLoaded(true));
+
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, user]);
+
   const scrollToBottom = useCallback(() => {
     requestAnimationFrame(() => {
       scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
     });
   }, []);
+
+  useEffect(() => {
+    if (historyLoaded) scrollToBottom();
+  }, [historyLoaded, scrollToBottom]);
 
   const send = useCallback(async () => {
     const question = input.trim();
@@ -141,7 +187,13 @@ export default function ChatPanel({ projectId, onEvidence }: ChatPanelProps) {
       </div>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-4 min-h-0">
-        {messages.length === 0 && (
+        {!historyLoaded && (
+          <div className="h-full flex items-center justify-center">
+            <Loader2 className="w-4 h-4 text-[var(--ink-faint)] animate-spin" />
+          </div>
+        )}
+
+        {historyLoaded && messages.length === 0 && (
           <div className="h-full flex flex-col items-center justify-center text-center px-6">
             <p className="eyebrow mb-2">Case open</p>
             <p className="text-[13px] text-[var(--ink-dim)] max-w-[26ch]">
