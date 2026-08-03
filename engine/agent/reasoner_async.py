@@ -1,3 +1,13 @@
+"""
+AsyncGraphReasoner - Streaming Graph RAG agent with history aware routing.
+
+- _route() decides if the question needs graph traversal or can be
+  answered from chat history alone.
+- _process_with_graph() - handles graph pipeline
+- answer_stream() - entry point that orchestrates routing, delegates
+  to either graph or history only response.
+"""
+
 import asyncio
 import time
 import numpy as np
