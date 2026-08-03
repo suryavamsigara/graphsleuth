@@ -114,16 +114,21 @@ export const api = {
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
 
-        const lines = buffer.split("\n\n");
-        buffer = lines.pop() || "";
+        const normalized = buffer.replace(/\r\n/g, "\n");
+        const frames = normalized.split("\n\n");
+        buffer = frames.pop() || "";
 
-        for (const line of lines) {
-          const dataLine = line.split("\n").find((l) => l.startsWith("data: "));
+        for (const frame of frames) {
+          const dataLine = frame
+            .split("\n")
+            .find((l) => l.startsWith("data:"));
           if (!dataLine) continue;
+          const payload = dataLine.slice(5).trim();
+          if (!payload) continue;
           try {
-            onEvent(JSON.parse(dataLine.slice(6)));
-          } catch {
-            // ignore malformed SSE frame
+            onEvent(JSON.parse(payload));
+          } catch (err) {
+            console.error("Failed to parse SSE frame:", payload, err);
           }
         }
       }

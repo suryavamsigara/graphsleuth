@@ -83,7 +83,7 @@ export default function ChatPanel({ projectId, onEvidence }: ChatPanelProps) {
     return () => {
       cancelled = true;
     };
-  }, [projectId, user]);
+  }, [projectId, user?.id]);
 
   const scrollToBottom = useCallback(() => {
     requestAnimationFrame(() => {
