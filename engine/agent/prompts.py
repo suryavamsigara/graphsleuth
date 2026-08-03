@@ -17,3 +17,7 @@ CITATION FORMAT:
 - For key claims, include both: "Sam Altman [PERSON] founded OpenAI [ORGANIZATION] [Source: abc-123]"
 
 Be concise but thorough. Prioritize factual accuracy over completeness."""
+
+
+ROUTER_PROMPT = """Reply with exactly one word: True or False. True if answering the new question requires looking up facts/entities from the knowledge graph. False if it can be answered from the conversation so far alone.
+"""

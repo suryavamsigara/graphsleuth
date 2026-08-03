@@ -9,7 +9,7 @@ from engine.client_async import get_async_openai_client, get_async_ollama_client
 from engine.embeddings.encoder import EmbeddingEncoder
 from engine.models.document import EvidencePath
 from engine.graph.knowledge_graph import KnowledgeGraph
-from engine.agent.prompts import REASONER_SYSTEM_PROMPT
+from engine.agent.prompts import REASONER_SYSTEM_PROMPT, ROUTER_PROMPT
 
 
 @dataclass
@@ -69,29 +69,53 @@ class AsyncGraphReasoner:
         self.top_k = top_k
         self.client = get_async_openai_client() if use_openai else get_async_ollama_client()
 
-    async def answer_stream(
+
+    # ------------------------------------------------------------------
+    # Routing
+    # ------------------------------------------------------------------
+    async def _route(self, question: str, history: list[dict]) -> bool:
+        """
+        Returns True if the question needs a fresh graph traversal,
+        False if it can be answered from the chat history alone.
+        """
+        if not history:
+            return True
+        
+        recent_history = history[-6:] if len(history) >= 6 else history
+        hist_text = "\n".join(f"{m['role']}: {m['content']}" for m in recent_history)
+
+        try:
+            resp = await self.client.chat.completions.create(
+                model=self.model_name,
+                messages=[
+                    {"role": "system","content": ROUTER_PROMPT},
+                    {"role": "user", "content": f"{hist_text}\nuser: {question}"},
+                ],
+                max_tokens=5,
+                temperature=0.0,
+            )
+            content = resp.choices[0].message.content.strip().lower()
+            return content == "true"
+        except Exception as e:
+            print("Routing error")
+            return True
+
+    async def _process_with_graph(
         self,
         question: str,
-        confidence_threshold: float | None = None,
-        top_k: int | None = None,
-        max_depth: int | None = None,
+        confidence_threshold: float,
+        top_k: int,
+        max_depth: int,
+        start_time: float,
     ):
-        """Yields SSE-style dict events: step, evidence, token, done.
-
-        `confidence_threshold` (0-1, from the chat panel's "confidence
-        threshold" dropdown) is passed straight through to
-        KnowledgeGraph.multi_hop_query's `min_score` override, tightening
-        or loosening which neighbors the traversal keeps at each hop for
-        just this question.
-
-        `top_k` / `max_depth`, when given, override the constructor
-        defaults for just this call.
         """
+        Full graph-RAG pipeline. Yields SSE-style dict events:
+        {type: "step" | "evidence" | "token" | "error" | "done", ...}
+        """
+        start_time = time.time()
+        steps: list[dict] = []
         resolved_top_k = top_k if top_k is not None else self.top_k
         resolved_max_depth = max_depth if max_depth is not None else self.max_depth
-
-        start_time = time.time()
-        steps = []
 
         # Step 1: entry nodes
         t0 = time.time()
@@ -168,7 +192,7 @@ class AsyncGraphReasoner:
         confidence = _compute_confidence(entry_scores, [s for _, _, s in top_chunks_with_scores])
 
         # Step 4: build context
-        entity_context = []
+        entity_context: list[str] = []
         for nid in evidence.visited_nodes[:15]:
             node = await asyncio.to_thread(self.kg.get_node, nid)
             if node:
@@ -176,7 +200,7 @@ class AsyncGraphReasoner:
                     f"ENTITY: {node.name} [{node.node_type}]\n  Description: {node.description}"
                 )
 
-        edge_context = []
+        edge_context: list[str] = []
         for edge in evidence.traversed_edges[:10]:
             src = await asyncio.to_thread(self.kg.get_node, edge.source_id)
             tgt = await asyncio.to_thread(self.kg.get_node, edge.target_id)
@@ -253,6 +277,7 @@ class AsyncGraphReasoner:
             "output": "Evidence path persisted",
             "latency_ms": 0,
         })
+
         yield {"type": "step", **steps[-1]}
 
         yield {
@@ -264,3 +289,108 @@ class AsyncGraphReasoner:
             "confidence": confidence,
             "steps": steps,
         }
+
+
+    # ------------------------------------------------------------------
+    # History-only response
+    # ------------------------------------------------------------------
+    async def _asnwer_from_history(self, question: str, history: list[dict]):
+        """
+        Answers directly fromt the chat history.
+        """
+        start_time = time.time()
+        steps: list[dict] = []
+        hist_text = ""
+
+        # Build context from history
+        minimum = min(10, len(history))
+        hist_text = "\n".join(f"{m['role']}: {m['content']}" for m in history[-minimum:])
+        context = f"""=== CHAT HISTORY ===
+        {hist_text}
+
+        === FOLLOW-UP QUESTION ===
+        {question}
+
+        Answer the question. Be concise.
+        """
+
+        t0 = time.time()
+        messages = [
+            {"role": "system", "content": "You are a helpful assistant. Answer using the provided conversation history."},
+            {"role": "user", "content": context},
+        ]
+
+        response = await self.client.chat.completions.create(
+            model=self.model_name,
+            messages=messages,
+            temperature=0.3,
+            max_tokens=1024,
+            stream=True,
+            stream_options={"include_usage": True},
+        )
+
+        answer_text = ""
+        tokens_used = 0
+        async for chunk in response:
+            delta = chunk.choices[0].delta.content or ""
+            answer_text += delta
+            if chunk.usage:
+                tokens_used = chunk.usage.total_tokens
+            if delta:
+                yield {"type": "token", "token": delta}
+
+        steps.append({
+            "step": 1,
+            "action": "synthesize_from_history",
+            "input": f"{len(history)} history messages",
+            "output": answer_text[:200] + "..." if len(answer_text) > 200 else answer_text,
+            "latency_ms": round((time.time() - t0) * 1000, 2),
+        })
+        yield {"type": "step", **steps[-1]}
+
+        total_latency = round((time.time() - start_time) * 1000, 2)
+
+        yield {
+            "type": "done",
+            "answer": answer_text,
+            "evidence_id": None,
+            "tokens_used": tokens_used,
+            "latency_ms": total_latency,
+            "confidence": 1.0,
+            "steps": steps,
+        }
+
+        
+    async def answer_stream(
+        self,
+        question: str,
+        confidence_threshold: float | None = None,
+        top_k: int | None = None,
+        max_depth: int | None = None,
+        history: list[dict] | None = None,
+    ):
+        """Yields SSE-style dict events: step, evidence, token, done.
+
+        `confidence_threshold` (0-1, from the chat panel's "confidence
+        threshold" dropdown) is passed straight through to
+        KnowledgeGraph.multi_hop_query's `min_score` override, tightening
+        or loosening which neighbors the traversal keeps at each hop for
+        just this question.
+
+        `top_k` / `max_depth`, when given, override the constructor
+        defaults for just this call.
+        """
+        history = history or []
+        needs_graph = await self._route(question, history)
+
+        if needs_graph:
+            async for event in self._process_with_graph(
+                question=question,
+                confidence_threshold=confidence_threshold,
+                top_k=top_k,
+                max_depth=max_depth,
+            ):
+                yield event
+        else:
+            async for event in self._asnwer_from_history(question, history):
+                yield event

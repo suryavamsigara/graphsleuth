@@ -1,4 +1,5 @@
 import json
+import asyncio
 
 from fastapi import APIRouter, Depends, HTTPException
 from sse_starlette.sse import EventSourceResponse
@@ -29,11 +30,17 @@ async def _stream_answer(
     Persistence: only signed-in users get their chat saved. Persisting happens right here, once
     the turn's `done` event is in hand — single source of truth.
     """
+    history = []
+    if user is not None:
+        rows = await asyncio.to_thread(chat_store.list_messages, project.id, user.id, 6)
+        history = [{"role": r.role, "content": r.content} for r in rows]
+
     async for event in engine.query_stream(
         req.question,
         confidence_threshold=req.confidence_threshold,
         top_k=req.top_k,
         max_depth=req.max_depth,
+        history=history,
     ):
         if event.get("type") == "done" and user is not None:
             chat_store.save_turn(

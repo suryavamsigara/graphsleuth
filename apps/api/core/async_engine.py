@@ -33,12 +33,14 @@ class AsyncEngine:
         confidence_threshold: float | None = None,
         top_k: int | None = None,
         max_depth: int | None = None,
+        history: list[dict] | None = None,
     ) -> AsyncGenerator[dict, None]:
         async for event in self.agent.answer_stream(
             question,
             confidence_threshold=confidence_threshold,
             top_k=top_k,
             max_depth=max_depth,
+            history=history,
         ):
             yield event
 
