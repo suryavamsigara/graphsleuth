@@ -385,6 +385,16 @@ class KnowledgeGraph:
         """Retrieves previously saved evidence paths for a question, scoped to this project"""
         return self.store.load_evidence_for_question(question, project_id=self.project_id)
 
+    def refresh(self) -> None:
+        """Reload all in-memory caches from the database."""
+        self.nodes = self.store.load_nodes(self.project_id)
+        self.chunks = self.store.load_chunks(self.project_id)
+        self.documents = self.store.load_documents(self.project_id)
+        self.doc_checksums = {d.checksum for d in self.documents.values()}
+        self._load_edges_into_cache()
+        self._embedding_cache.clear()
+
+
     def export_to_json(self, output_dir: str = "graph_exports") -> dict:
         """Exoprt the entire knowledge graph to json files."""
         output_path = Path(output_dir)

@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { X, UploadCloud, FileText, CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { cn } from "../lib/utils";
@@ -20,13 +20,22 @@ interface IngestModalProps {
   projectId: string;
   open: boolean;
   onClose: () => void;
-  onIngested: () => void; // refetch metrics/documents after a run
+  onIngested: () => void;
 }
 
 export default function IngestModal({ projectId, open, onClose, onIngested }: IngestModalProps) {
   const [files, setFiles] = useState<QueuedFile[]>([]);
   const [dragActive, setDragActive] = useState(false);
+  const [isRunning, setIsRunning] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Clear files when modal opens so old runs don't persist
+  useEffect(() => {
+    if (open) {
+      setFiles([]);
+      setIsRunning(false);
+    }
+  }, [open]);
 
   const addFiles = useCallback((fileList: FileList | File[]) => {
     const accepted = Array.from(fileList).filter((f) =>
@@ -34,12 +43,21 @@ export default function IngestModal({ projectId, open, onClose, onIngested }: In
     );
     setFiles((prev) => [
       ...prev,
-      ...accepted.map((file) => ({ id: `${file.name}-${file.size}-${Date.now()}`, file, status: "queued" as FileStatus })),
+      ...accepted.map((file) => ({
+        id: `${file.name}-${file.size}-${Date.now()}`,
+        file,
+        status: "queued" as FileStatus,
+      })),
     ]);
   }, []);
 
   const runUpload = useCallback(async () => {
     const pending = files.filter((f) => f.status === "queued");
+    if (pending.length === 0) return;
+
+    setIsRunning(true);
+    let hasError = false;
+
     for (const qf of pending) {
       setFiles((prev) => prev.map((f) => (f.id === qf.id ? { ...f, status: "uploading" } : f)));
       try {
@@ -47,11 +65,22 @@ export default function IngestModal({ projectId, open, onClose, onIngested }: In
         if (!result.success) throw new Error(result.error || "Ingestion failed");
         setFiles((prev) => prev.map((f) => (f.id === qf.id ? { ...f, status: "done", result } : f)));
       } catch (e: any) {
+        hasError = true;
         setFiles((prev) => prev.map((f) => (f.id === qf.id ? { ...f, status: "error", error: String(e.message || e) } : f)));
       }
     }
+
+    setIsRunning(false);
     onIngested();
-  }, [files, projectId, onIngested]);
+
+    // Auto-close if everything succeeded
+    if (!hasError) {
+      setTimeout(() => onClose(), 600);
+    }
+  }, [files, projectId, onIngested, onClose]);
+
+  const hasQueued = files.some((f) => f.status === "queued");
+  const allDone = files.length > 0 && files.every((f) => f.status === "done");
 
   if (!open) return null;
 
@@ -69,7 +98,11 @@ export default function IngestModal({ projectId, open, onClose, onIngested }: In
             <div className="eyebrow">Intake</div>
             <h2 className="text-[14px] font-medium text-[var(--ink)]">Add evidence to the case</h2>
           </div>
-          <button onClick={onClose} className="p-1 rounded-md text-[var(--ink-faint)] hover:text-[var(--ink)] hover:bg-[var(--panel-raised)]">
+          <button
+            onClick={onClose}
+            disabled={isRunning}
+            className="p-1 rounded-md text-[var(--ink-faint)] hover:text-[var(--ink)] hover:bg-[var(--panel-raised)] disabled:opacity-40"
+          >
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -140,16 +173,29 @@ export default function IngestModal({ projectId, open, onClose, onIngested }: In
         </div>
 
         <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-[var(--hairline)]">
-          <button onClick={onClose} className="px-3 py-1.5 text-[13px] text-[var(--ink-dim)] hover:text-[var(--ink)]">
+          <button
+            onClick={onClose}
+            disabled={isRunning}
+            className="px-3 py-1.5 text-[13px] text-[var(--ink-dim)] hover:text-[var(--ink)] disabled:opacity-40"
+          >
             Close
           </button>
-          <button
-            onClick={runUpload}
-            disabled={!files.some((f) => f.status === "queued")}
-            className="px-3.5 py-1.5 rounded-md bg-[var(--thread)] text-[var(--void)] text-[13px] font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:brightness-110 transition-all"
-          >
-            Ingest {files.filter((f) => f.status === "queued").length || ""}
-          </button>
+          {!allDone && (
+            <button
+              onClick={runUpload}
+              disabled={!hasQueued || isRunning}
+              className="px-3.5 py-1.5 rounded-md bg-[var(--thread)] text-[var(--void)] text-[13px] font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:brightness-110 transition-all"
+            >
+              {isRunning ? (
+                <span className="flex items-center gap-1.5">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  Ingesting…
+                </span>
+              ) : (
+                <>Ingest {files.filter((f) => f.status === "queued").length || ""}</>
+              )}
+            </button>
+          )}
         </div>
       </motion.div>
     </div>

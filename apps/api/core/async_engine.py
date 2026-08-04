@@ -128,3 +128,6 @@ class AsyncEngine:
                     edges.append({"id": e.id, "source": e.source_id, "target": e.target_id, "label": e.relation})
             return {"nodes": nodes, "edges": edges}
         return await asyncio.to_thread(_build)
+
+    async def refresh(self) -> None:
+        await asyncio.to_thread(self.kg.refresh)

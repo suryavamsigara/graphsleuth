@@ -45,6 +45,7 @@ async def upload_document(
         # Ingest into knowledge graph (already scoped to `project` via the
         # per-project engine returned by get_engine_for_write)
         result = await engine.ingest_file(temp_path, file.filename)
+        await engine.refresh()
 
         # Archive original to Supabase if ingestion succeeded — namespaced
         # under the project so two projects can't collide on storage paths
