@@ -159,7 +159,7 @@ export default function ChatPanel({ projectId, onEvidence }: ChatPanelProps) {
   return (
     <div className="flex flex-col h-full bg-[var(--panel)]">
       <div className="flex items-center gap-2 px-3 py-2.5 border-b border-[var(--hairline)] shrink-0">
-        <span className="eyebrow mr-1">Interview settings</span>
+        <span className="eyebrow mr-1">Settings</span>
 
         <select
           value={maxDepth}

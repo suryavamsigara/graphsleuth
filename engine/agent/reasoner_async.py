@@ -91,7 +91,7 @@ class AsyncGraphReasoner:
         if not history:
             return True
         
-        recent_history = history[-2:] if len(history) >= 6 else history
+        recent_history = history[-6:] if len(history) >= 6 else history
         hist_text = "\n".join(f"{m['role']}: {m['content']}" for m in recent_history)
 
         try:
