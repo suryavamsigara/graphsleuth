@@ -5,6 +5,7 @@ import { AuthProvider } from "./lib/authContext";
 import HomePage from "./pages/HomePage";
 import ExplorePage from "./pages/ExplorePage";
 import AuthPage from "./pages/AuthPage";
+import ProfilePage from "./pages/ProfilePage";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, staleTime: 10_000 } },
@@ -22,15 +23,17 @@ function useRoute() {
   const caseMatch = hash.match(/^#\/case\/(.+)$/);
   const isLogin = hash === "#/login";
   const isRegister = hash === "#/register";
+  const isProfile = hash === "#/profile";
 
   return {
     projectId: caseMatch ? decodeURIComponent(caseMatch[1]) : null,
     authMode: isLogin ? ("login" as const) : isRegister ? ("register" as const) : null,
+    isProfile,
   };
 }
 
 function Router() {
-  const { projectId, authMode } = useRoute();
+  const { projectId, authMode, isProfile } = useRoute();
 
   const goHome = () => {
     window.location.hash = "";
@@ -47,6 +50,10 @@ function Router() {
         onDone={goHome}
       />
     );
+  }
+
+  if (isProfile) {
+    return <ProfilePage onGoHome={goHome} />;
   }
 
   if (projectId) {
