@@ -53,7 +53,13 @@ export default function GraphViewer({
 }: GraphViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<cytoscape.Core | null>(null);
+  const onNodeSelectRef = useRef(onNodeSelect);
   const [isReady, setIsReady] = useState(false);
+
+  useEffect(() => {
+    onNodeSelectRef.current = onNodeSelect;
+  }, [onNodeSelect]);
+
 
   useEffect(() => {
     if (!containerRef.current || cyRef.current) return;
@@ -212,7 +218,25 @@ export default function GraphViewer({
       cy.destroy();
       cyRef.current = null;
     };
-  }, [onNodeSelect]);
+  }, []);
+
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy) return;
+
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible" && nodes.length > 0) {
+        // Small delay to let browser finish compositing
+        requestAnimationFrame(() => {
+          cy.resize();
+          cy.fit(undefined, 50);
+        });
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, [nodes.length]);
 
   // Rebuild elements when data changes
   useEffect(() => {
@@ -220,7 +244,10 @@ export default function GraphViewer({
     if (!cy || !isReady) return;
 
     cy.elements().remove();
-    if (nodes.length === 0) return;
+    if (nodes.length === 0) {
+      setIsReady(true); // keep ready state, just empty
+      return;
+    }
 
     const cyNodes = nodes.map((n) => ({
       data: { id: n.id, label: n.label, type: n.type, description: n.description || "", is_entry: n.is_entry || false },
@@ -256,6 +283,19 @@ export default function GraphViewer({
           cy.animate({ fit: { eles: node, padding: 100 } }, { duration: 400 });
         }, 750);
       }
+    }
+
+    if (evidencePath && evidencePath.nodeIds.length > 0) {
+      const nodeSet = new Set(evidencePath.nodeIds);
+      const edgeSet = new Set(evidencePath.edgeIds);
+      cy.nodes().forEach((n) => {
+        if (nodeSet.has(n.id())) n.addClass("evidence");
+        else n.addClass("redacted");
+      });
+      cy.edges().forEach((e) => {
+        if (edgeSet.has(e.id())) e.addClass("evidence");
+        else e.addClass("redacted");
+      });
     }
   }, [nodes, edges, isReady, selectedNodeId]);
 
