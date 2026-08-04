@@ -67,10 +67,10 @@ class EvidencePath:
         return {
             "id": self.id,
             "question": self.question,
-            "entry_nodes": json.dumps(self.entry_nodes),
-            "visited_nodes": json.dumps(self.visited_nodes),
+            "entry_nodes": self.entry_nodes,
+            "visited_nodes": self.visited_nodes,
             "traversed_edges": [e.to_dict() if hasattr(e, 'to_dict') else e for e in self.traversed_edges],
-            "source_chunks": json.dumps(self.source_chunks),
+            "source_chunks": self.source_chunks,
             "answer": self.answer,
             "confidence": self.confidence,
             "created_at": self.created_at,
@@ -79,21 +79,26 @@ class EvidencePath:
 
     @classmethod
     def from_dict(cls, data: dict) -> "EvidencePath":
-        # Safely re-instantiate your nested Edge objects from the JSON row data
+        def _as_list(v):
+            if v is None:
+                return []
+            if isinstance(v, str):
+                try:
+                    return json.loads(v)
+                except (json.JSONDecodeError, TypeError):
+                    return []
+            return v
+
         raw_edges = data.get("traversed_edges") or []
-        
-        edges = [
-            Edge.from_dict(e) if isinstance(e, dict) else e 
-            for e in raw_edges
-        ]
-        
+        edges = [Edge.from_dict(e) if isinstance(e, dict) else e for e in raw_edges]
+
         return cls(
             id=str(data["id"]),
             question=data["question"],
-            entry_nodes=data.get("entry_nodes") or [],
-            visited_nodes=data.get("visited_nodes") or [],
+            entry_nodes=_as_list(data.get("entry_nodes")),
+            visited_nodes=_as_list(data.get("visited_nodes")),
             traversed_edges=edges,
-            source_chunks=data.get("source_chunks") or [],
+            source_chunks=_as_list(data.get("source_chunks")),
             answer=data.get("answer", ""),
             confidence=float(data.get("confidence") or 0.0),
             created_at=str(data["created_at"]),

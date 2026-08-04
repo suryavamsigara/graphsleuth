@@ -112,13 +112,17 @@ export default function ExplorePage({ projectId, onGoHome, onSelectProject }: Ex
     async (evidenceId: string) => {
       try {
         const graph = await api.graph.evidenceGraph(projectId, evidenceId);
+        if (!graph.nodes.length) {
+          console.warn("[ExplorePage] evidence graph came back empty for", evidenceId);
+          return;
+        }
         const nodes: GraphNode[] = graph.nodes.map((n: any) => ({ ...n, is_entry: n.is_entry }));
         setGraphData({ nodes, edges: graph.edges });
         setEvidencePath({ nodeIds: nodes.map((n) => n.id), edgeIds: graph.edges.map((e: any) => e.id) });
         setSelectedNode(null);
         setSelectedNodeId(null);
-      } catch {
-        // evidence graph fetch failing shouldn't break the chat turn
+      } catch (e) {
+        console.error("[ExplorePage] evidenceGraph fetch failed:", e);
       }
     },
     [projectId]

@@ -284,19 +284,6 @@ export default function GraphViewer({
         }, 750);
       }
     }
-
-    if (evidencePath && evidencePath.nodeIds.length > 0) {
-      const nodeSet = new Set(evidencePath.nodeIds);
-      const edgeSet = new Set(evidencePath.edgeIds);
-      cy.nodes().forEach((n) => {
-        if (nodeSet.has(n.id())) n.addClass("evidence");
-        else n.addClass("redacted");
-      });
-      cy.edges().forEach((e) => {
-        if (edgeSet.has(e.id())) e.addClass("evidence");
-        else e.addClass("redacted");
-      });
-    }
   }, [nodes, edges, isReady, selectedNodeId]);
 
   // Apply / clear the evidence-path highlight (dim everything else, light the trail)
