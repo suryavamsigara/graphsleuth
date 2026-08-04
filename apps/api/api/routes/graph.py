@@ -14,6 +14,14 @@ from apps.api.api.schemas.graph import (
 
 router = APIRouter(prefix="/graph", tags=["graph"])
 
+@router.get("/overview", response_model=EvidenceGraphResponse)
+async def graph_overview(limit: int = 20, engine: AsyncEngine = Depends(get_engine_for_read)):
+    graph = await engine.get_overview_graph(limit)
+    return EvidenceGraphResponse(
+        nodes=[GraphNode(**n) for n in graph["nodes"]],
+        edges=[GraphEdge(**e) for e in graph["edges"]],
+    )
+
 
 @router.post("/traverse")
 async def traverse_graph(

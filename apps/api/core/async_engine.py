@@ -100,3 +100,31 @@ class AsyncEngine:
 
         return await asyncio.to_thread(_build)
 
+
+    async def get_overview_graph(self, limit: int = 20) -> dict:
+        """
+        Default board view: the most-connected entities (by degree) and edges between them.
+        """
+
+        def _build():
+            central = self.kg.get_central_nodes(top_k=limit)
+            node_ids = {nid for nid, _ in central}
+            nodes = []
+            for nid, _deg in central:
+                n = self.kg.get_node(nid)
+                if not n:
+                    continue
+                nodes.append({
+                    "id": n.id, "label": n.name, "type": n.node_type,
+                    "description": n.description, "is_entry": False,
+                })
+
+            seen, edges = set(), []
+            for nid in node_ids:
+                for e in self.kg.get_all_edges(nid):
+                    if e.id in seen or e.source_id not in node_ids or e.target_id not in node_ids:
+                        continue
+                    seen.add(e.id)
+                    edges.append({"id": e.id, "source": e.source_id, "target": e.target_id, "label": e.relation})
+            return {"nodes": nodes, "edges": edges}
+        return await asyncio.to_thread(_build)

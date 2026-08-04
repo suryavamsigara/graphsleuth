@@ -125,7 +125,7 @@ export default function ChatPanel({ projectId, onEvidence }: ChatPanelProps) {
                 return { ...m, evidenceId: event.data?.id };
               }
               if (event.type === "done") {
-                onEvidence(event.evidence_id);
+                if (event.evidence_id) onEvidence(event.evidence_id);
                 return {
                   ...m,
                   text: event.answer || m.text,

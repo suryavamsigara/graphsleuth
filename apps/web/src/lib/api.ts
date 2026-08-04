@@ -173,5 +173,7 @@ export const api = {
       ),
     evidenceGraph: (projectId: string, evidenceId: string) =>
       fetchJson(`/graph/evidence/${evidenceId}`, {}, projectId),
+    overview: (projectId: string, limit = 25) =>
+      fetchJson(`/graph/overview?limit=${limit}`, {}, projectId),
   },
 };

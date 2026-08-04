@@ -91,7 +91,7 @@ class AsyncGraphReasoner:
         if not history:
             return True
         
-        recent_history = history[-6:] if len(history) >= 6 else history
+        recent_history = history[-2:] if len(history) >= 6 else history
         hist_text = "\n".join(f"{m['role']}: {m['content']}" for m in recent_history)
 
         try:
@@ -101,7 +101,8 @@ class AsyncGraphReasoner:
                     {"role": "system","content": ROUTER_PROMPT},
                     {"role": "user", "content": f"{hist_text}\nuser: {question}"},
                 ],
-                max_tokens=5,
+                stream=False,
+                max_completion_tokens=5,
                 temperature=0.0,
             )
             content = resp.choices[0].message.content.strip().lower()
@@ -116,7 +117,6 @@ class AsyncGraphReasoner:
         confidence_threshold: float,
         top_k: int,
         max_depth: int,
-        start_time: float,
     ):
         """
         Full graph-RAG pipeline. Yields SSE-style dict events:

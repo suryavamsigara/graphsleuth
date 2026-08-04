@@ -40,13 +40,23 @@ export default function ExplorePage({ projectId, onGoHome, onSelectProject }: Ex
   const [evidencePath, setEvidencePath] = useState<EvidencePath | null>(null);
   const [ingestOpen, setIngestOpen] = useState(false);
 
+  const loadOverview = useCallback(async () => {
+    try {
+      const graph = await api.graph.overview(projectId, 25);
+      setGraphData({ nodes: graph.nodes, edges: graph.edges });
+    } catch {
+      // fresh/empty project — board just stays empty
+    }
+  }, [projectId]);
+
   // Reset the board whenever the active case changes
   useEffect(() => {
     setSelectedNodeId(null);
     setSelectedNode(null);
     setGraphData({ nodes: [], edges: [] });
     setEvidencePath(null);
-  }, [projectId]);
+    loadOverview();
+  }, [projectId, loadOverview]);
 
   const { data: projects } = useQuery({
     queryKey: ["projects", user?.id ?? "anon"],
@@ -117,6 +127,11 @@ export default function ExplorePage({ projectId, onGoHome, onSelectProject }: Ex
   const refetchMetrics = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ["graph-metrics", projectId] });
   }, [queryClient, projectId]);
+
+  const handleIngested = useCallback(() => {
+    refetchMetrics();
+    loadOverview();
+  }, [refetchMetrics, loadOverview]);
 
   const canIngest = !!activeProject?.is_mine;
 
@@ -200,7 +215,7 @@ export default function ExplorePage({ projectId, onGoHome, onSelectProject }: Ex
       </div>
 
       {canIngest && (
-        <IngestModal projectId={projectId} open={ingestOpen} onClose={() => setIngestOpen(false)} onIngested={refetchMetrics} />
+        <IngestModal projectId={projectId} open={ingestOpen} onClose={() => setIngestOpen(false)} onIngested={handleIngested} />
       )}
     </div>
   );

@@ -19,5 +19,5 @@ CITATION FORMAT:
 Be concise but thorough. Prioritize factual accuracy over completeness."""
 
 
-ROUTER_PROMPT = """Reply with exactly one word: True or False. True if answering the new question requires looking up facts/entities from the knowledge graph. False if it can be answered from the conversation so far alone.
+ROUTER_PROMPT = """Reply with exactly one word: true or false. true if answering the new question requires looking up facts/entities from the knowledge graph. false if it can be answered from the conversation so far alone.
 """
