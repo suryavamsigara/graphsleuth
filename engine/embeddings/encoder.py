@@ -15,19 +15,25 @@ class EmbeddingEncoder:
         return self.encode(text)[0]
 
 class LocalEncoder(EmbeddingEncoder):
-    """CPU bound model2vec (local dev)"""
-    def __init__(self, model_name: str, dimensionality: int = 128):
-        from model2vec import StaticModel
-        self.model = StaticModel.from_pretrained(model_name, dimensionality=dimensionality)
+    """CPU bound sentence transformers (local dev)"""
+    def __init__(self, model_name: str = "BAAI/bge-small-en-v1.5", dimensionality: int = 384):
+        from sentence_transformers import SentenceTransformer
+        self.model_name = model_name
+        self.model = SentenceTransformer(self.model_name)
+        self.dimensionality = dimensionality
 
     def encode(self, texts: str | list[str]) -> list[list[float]]:
         if isinstance(texts, str):
             texts = [texts]
-        embeddings = self.model.encode(texts)
-        return [emb.tolist() for emb in embeddings]
+        embeddings = self.model.encode(
+            texts,
+            convert_to_numpy=True,
+            show_progress_bar=False
+        )
+        return embeddings.tolist()
 
 
-class HFSpacesEncoder(EmbeddingEncoder):
+class RemoteEncoder(EmbeddingEncoder):
     """HTTP call to HF Spaces embedding service."""
     def __init__(self, space_url: str | None = None, api_key: str | None = None):
         self.space_url = (space_url or os.getenv("HF_SPACE_URL", "")).rstrip("/")

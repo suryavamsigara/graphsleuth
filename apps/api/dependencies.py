@@ -46,7 +46,7 @@ def get_file_store() -> SupabaseFileStore:
 @lru_cache
 def get_encoder() -> EmbeddingEncoder:
     return LocalEncoder(
-        model_name="MinishLab/potion-retrieval-32M",
+        model_name="BAAI/bge-small-en-v1.5",
         dimensionality=384,
     )
 
