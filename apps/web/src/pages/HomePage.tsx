@@ -21,9 +21,8 @@ function CaseCard({ project, onOpen }: { project: ProjectSummary; onOpen: () => 
         <div className="w-8 h-8 rounded-md bg-[var(--panel-raised)] border border-[var(--hairline)] flex items-center justify-center rotate-[-2deg] group-hover:rotate-0 transition-transform">
           <FolderSearch className="w-4 h-4 text-[var(--thread)]" />
         </div>
-        <span className="stamp" style={{ color: project.is_public ? "var(--verdict)" : "var(--wire)" }}>
-          {project.is_public ? <Globe className="w-3 h-3" /> : <Lock className="w-3 h-3" />}
-          {project.is_public ? "Public" : "Private"}
+        <span style={{ color: project.is_public ? "var(--verdict)" : "var(--wire)" }}>
+          {project.is_public ? <Globe className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
         </span>
       </div>
       <h3 className="text-[14px] font-medium text-[var(--ink)] leading-tight mb-1">{project.name}</h3>
@@ -77,7 +76,7 @@ export default function HomePage({ onOpenProject }: HomePageProps) {
                 onClick={() => setNewCaseOpen(true)}
                 className="flex items-center gap-1.5 pl-2 pr-2.5 py-1 rounded-md bg-[var(--thread)] text-[var(--void)] text-[12px] font-medium hover:brightness-110 transition-all"
               >
-                <Plus className="w-3 h-3" strokeWidth={2.5} />
+                <Plus className="w-4 h-4" strokeWidth={2.5} />
                 New case
               </button>
             </div>
