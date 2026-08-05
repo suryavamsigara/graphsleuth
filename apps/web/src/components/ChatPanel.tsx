@@ -240,7 +240,7 @@ export default function ChatPanel({ projectId, onTrace }: ChatPanelProps) {
             }}
             rows={1}
             placeholder="Ask about the project…"
-            className="flex-1 bg-transparent resize-none text-[13px] text-[var(--ink)] placeholder:text-[var(--ink-faint)] focus:outline-none max-h-32"
+            className="flex-1 bg-transparent resize-none text-[13px] text-[var(--ink)] placeholder:text-[var(--ink-faint)] focus:outline-none focus:ring-0 max-h-32"
           />
           <button
             onClick={send}
