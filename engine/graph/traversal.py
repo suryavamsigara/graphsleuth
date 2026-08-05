@@ -5,7 +5,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 from engine.models.node import Node
 from engine.models.edge import Edge
-from engine.models.document import EvidencePath, Chunk
+from engine.models.document import ReasoningTrace, Chunk
 
 
 class TraversalEngine:
@@ -164,13 +164,13 @@ class TraversalEngine:
         search_chunks: Callable[[str, int], list[tuple[str, float]]],
         max_depth: int = 2,
         direction: str = "both",
-    ) -> EvidencePath:
+    ) -> ReasoningTrace:
         """
         The main query interface.
         1. Find entry nodes via embedding similarity
         2. Traverse graph from each entry point
         3. Collect all reachable nodes, edges, and source chunks
-        4. Return an EvidencePath
+        4. Return an ReasoningTrace
         """
 
         valid_entries = [(nid, score) for nid, score in entry_nodes_with_scores if score >= self.min_entry_score]
@@ -180,7 +180,7 @@ class TraversalEngine:
             chunk_results = search_chunks(question, k=5)
             if chunk_results:
                 avg = sum(s for _, s in chunk_results) / len(chunk_results)
-                return EvidencePath(
+                return ReasoningTrace(
                     question=question,
                     entry_nodes=[],
                     visited_nodes=[],
@@ -189,7 +189,7 @@ class TraversalEngine:
                     confidence=round(avg, 4),
                 )
 
-            return EvidencePath(
+            return ReasoningTrace(
                 question=question,
                 entry_nodes=[],
                 visited_nodes=[],
@@ -238,7 +238,7 @@ class TraversalEngine:
             sum(score for _, score in valid_entries) / len(valid_entries) if valid_entries else 0.0
         )
 
-        return EvidencePath(
+        return ReasoningTrace(
             question=question,
             entry_nodes=entry_node_ids,
             visited_nodes=list(all_visited),

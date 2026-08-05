@@ -1,7 +1,7 @@
 from supabase import Client
 
 from engine.models.document import Chunk
-from engine.models.document import Document, EvidencePath
+from engine.models.document import Document, ReasoningTrace
 from engine.models.edge import Edge
 from engine.models.node import Node
 from engine.ports.graph_store import GraphStore
@@ -116,12 +116,12 @@ class SupabaseGraphStore(GraphStore):
             return None
         return self._row_to_doc(resp.data[0])
 
-    # -- Evidence --
-    def save_evidence(self, ev: EvidencePath) -> str:
+    # -- Trace --
+    def save_trace(self, ev: ReasoningTrace) -> str:
         if not ev.project_id:
-            raise ValueError("EvidencePath has no project_id set — refusing to save unscoped row")
+            raise ValueError("ReasoningTrace has no project_id set — refusing to save unscoped row")
         d = ev.to_dict()
-        self.client.table("evidence_paths").insert({
+        self.client.table("traces").insert({
             "id": d["id"],
             "project_id": d["project_id"],
             "question": d["question"],
@@ -135,19 +135,19 @@ class SupabaseGraphStore(GraphStore):
         }).execute()
         return d["id"]
 
-    def load_evidence_for_question(self, question: str, project_id: str, limit: int = 10) -> list[EvidencePath]:
-        resp = self.client.table("evidence_paths").select("*") \
+    def load_traces_for_question(self, question: str, project_id: str, limit: int = 10) -> list[ReasoningTrace]:
+        resp = self.client.table("traces").select("*") \
             .eq("question", question) \
             .eq("project_id", project_id) \
             .order("confidence", desc=True) \
             .limit(limit).execute()
-        return [self._row_to_evidence(row) for row in resp.data]
+        return [self._row_to_trace(row) for row in resp.data]
 
-    def get_evidence(self, evidence_id: str) -> EvidencePath | None:
-        resp = self.client.table("evidence_paths").select("*").eq("id", evidence_id).execute()
+    def get_trace(self, trace_id: str) -> ReasoningTrace | None:
+        resp = self.client.table("traces").select("*").eq("id", trace_id).execute()
         if not resp.data:
             return None
-        return self._row_to_evidence(resp.data[0])
+        return self._row_to_trace(resp.data[0])
 
     def close(self) -> None:
         pass
@@ -199,5 +199,5 @@ class SupabaseGraphStore(GraphStore):
         })
 
     @staticmethod
-    def _row_to_evidence(row) -> EvidencePath:
-        return EvidencePath.from_dict(row)
+    def _row_to_trace(row) -> ReasoningTrace:
+        return ReasoningTrace.from_dict(row)

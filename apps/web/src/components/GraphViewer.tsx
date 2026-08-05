@@ -18,7 +18,7 @@ interface GraphEdge {
   label: string;
 }
 
-export interface EvidencePath {
+export interface ReasoningTrace {
   nodeIds: string[];
   edgeIds: string[];
 }
@@ -28,7 +28,7 @@ interface GraphViewerProps {
   edges: GraphEdge[];
   onNodeSelect?: (node: GraphNode | null) => void;
   selectedNodeId?: string | null;
-  evidencePath?: EvidencePath | null; // when set, everything outside it dims ("redacted")
+  reasoningTrace?: ReasoningTrace | null; // when set, everything outside it dims ("redacted")
   className?: string;
 }
 
@@ -48,7 +48,7 @@ export default function GraphViewer({
   edges,
   onNodeSelect,
   selectedNodeId,
-  evidencePath,
+  reasoningTrace,
   className,
 }: GraphViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -125,7 +125,7 @@ export default function GraphViewer({
             "border-color": (ele: any) => NODE_COLORS[ele.data("type") as string] || "#7d818c",
           },
         },
-        // Redacted: outside the current evidence path
+        // Redacted: outside the current trace path
         {
           selector: "node.redacted",
           style: {
@@ -158,9 +158,9 @@ export default function GraphViewer({
           selector: "edge.redacted",
           style: { "line-opacity": 0.08, "text-opacity": 0.15 },
         },
-        // The evidence string: the traversed path, lit up like red string on cork
+        // The trace string: the traversed path, lit up like red string on cork
         {
-          selector: "edge.evidence",
+          selector: "edge.trace",
           style: {
             "line-color": "#f2a33e",
             "line-opacity": 1,
@@ -174,7 +174,7 @@ export default function GraphViewer({
           } as any,
         },
         {
-          selector: "node.evidence",
+          selector: "node.trace",
           style: {
             "border-color": "#f2a33e",
             "border-width": 2,
@@ -286,27 +286,27 @@ export default function GraphViewer({
     }
   }, [nodes, edges, isReady, selectedNodeId]);
 
-  // Apply / clear the evidence-path highlight (dim everything else, light the trail)
+  // Apply / clear the trace-path highlight (dim everything else, light the trail)
   useEffect(() => {
     const cy = cyRef.current;
     if (!cy || !isReady) return;
 
-    cy.elements().removeClass("evidence redacted");
+    cy.elements().removeClass("trace redacted");
 
-    if (!evidencePath || evidencePath.nodeIds.length === 0) return;
+    if (!reasoningTrace || reasoningTrace.nodeIds.length === 0) return;
 
-    const nodeSet = new Set(evidencePath.nodeIds);
-    const edgeSet = new Set(evidencePath.edgeIds);
+    const nodeSet = new Set(reasoningTrace.nodeIds);
+    const edgeSet = new Set(reasoningTrace.edgeIds);
 
     cy.nodes().forEach((n) => {
-      if (nodeSet.has(n.id())) n.addClass("evidence");
+      if (nodeSet.has(n.id())) n.addClass("trace");
       else n.addClass("redacted");
     });
     cy.edges().forEach((e) => {
-      if (edgeSet.has(e.id())) e.addClass("evidence");
+      if (edgeSet.has(e.id())) e.addClass("trace");
       else e.addClass("redacted");
     });
-  }, [evidencePath, isReady]);
+  }, [reasoningTrace, isReady]);
 
   const zoomIn = useCallback(() => cyRef.current?.zoom(cyRef.current.zoom() * 1.25), []);
   const zoomOut = useCallback(() => cyRef.current?.zoom(cyRef.current.zoom() * 0.8), []);

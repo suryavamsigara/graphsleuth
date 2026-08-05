@@ -76,7 +76,7 @@ function CaseCard({
         </p>
 
         <div className="flex items-center text-[11px] text-[var(--ink-faint)] group-hover:text-[var(--thread)] transition-colors duration-300">
-          <span>Open case</span>
+          <span>Open project</span>
           <ChevronRight className="w-3 h-3 ml-0.5 group-hover:translate-x-0.5 transition-transform duration-300" />
         </div>
       </div>
@@ -158,7 +158,7 @@ export default function HomePage({ onOpenProject }: HomePageProps) {
 
             <p className="text-[16px] sm:text-[17px] text-[var(--ink-dim)] leading-relaxed max-w-xl mx-auto mb-10">
               Extract entities, map relationships, and reason across your
-              documents with full traceability. Every answer shows its work.
+              documents with full traceability. Every answer includes source references.
             </p>
 
             {/* Search Bar */}
@@ -169,7 +169,7 @@ export default function HomePage({ onOpenProject }: HomePageProps) {
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search cases by name..."
+                  placeholder="Search projects by name..."
                   className="w-full bg-[var(--panel)] border border-[var(--hairline)] rounded-xl pl-11 pr-4 py-3.5 text-[14px] text-[var(--ink)] placeholder:text-[var(--ink-faint)] focus:outline-none focus:border-[var(--thread)]/50 focus:ring-1 focus:ring-[var(--thread)]/20 transition-all"
                 />
                 {searchQuery && (
@@ -191,7 +191,7 @@ export default function HomePage({ onOpenProject }: HomePageProps) {
                   className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[var(--thread)] text-[var(--void)] text-[13px] font-semibold hover:brightness-110 active:scale-[0.98] transition-all"
                 >
                   <Plus className="w-4 h-4" strokeWidth={2.5} />
-                  New case
+                  New project
                 </button>
               )}
               <button
@@ -199,7 +199,7 @@ export default function HomePage({ onOpenProject }: HomePageProps) {
                 className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl border border-[var(--hairline)] bg-[var(--panel)] text-[var(--ink-dim)] text-[13px] font-medium hover:border-[var(--hairline-strong)] hover:text-[var(--ink)] transition-all"
               >
                 <Globe className="w-4 h-4" />
-                Browse public cases
+                Browse public projects
                 <ArrowDown className="w-3 h-3" />
               </button>
             </div>
@@ -215,11 +215,11 @@ export default function HomePage({ onOpenProject }: HomePageProps) {
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h2 className="text-[20px] font-semibold text-[var(--ink)] mb-1">
-                  My cases
+                  My projects
                 </h2>
                 <p className="text-[13px] text-[var(--ink-dim)]">
                   {filteredMine.length}{" "}
-                  {filteredMine.length === 1 ? "case" : "cases"}
+                  {filteredMine.length === 1 ? "project" : "projects"}
                   {searchQuery && " matching your search"}
                 </p>
               </div>
@@ -228,7 +228,7 @@ export default function HomePage({ onOpenProject }: HomePageProps) {
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--panel)] border border-[var(--hairline)] text-[12px] font-medium text-[var(--ink-dim)] hover:text-[var(--ink)] hover:border-[var(--hairline-strong)] transition-all"
               >
                 <Plus className="w-3.5 h-3.5" />
-                New case
+                New project
               </button>
             </div>
 
@@ -247,12 +247,12 @@ export default function HomePage({ onOpenProject }: HomePageProps) {
                   <FolderSearch className="w-5 h-5 text-[var(--ink-faint)]" />
                 </div>
                 <h3 className="text-[15px] font-medium text-[var(--ink)] mb-1">
-                  {searchQuery ? "No cases match your search" : "No cases yet"}
+                  {searchQuery ? "No projects match your search" : "No projects yet"}
                 </h3>
                 <p className="text-[13px] text-[var(--ink-dim)] mb-4 max-w-sm mx-auto">
                   {searchQuery
                     ? "Try adjusting your search terms"
-                    : "Create your first case to start investigating documents"}
+                    : "Create your first project to start investigating documents"}
                 </p>
                 {!searchQuery && (
                   <button
@@ -260,7 +260,7 @@ export default function HomePage({ onOpenProject }: HomePageProps) {
                     className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--thread)] text-[var(--void)] text-[12px] font-medium hover:brightness-110 transition-all"
                   >
                     <Plus className="w-3.5 h-3.5" />
-                    Create a case
+                    Create a project
                   </button>
                 )}
               </div>
@@ -284,11 +284,11 @@ export default function HomePage({ onOpenProject }: HomePageProps) {
           <div className="flex items-center justify-between mb-6">
             <div>
               <h2 className="text-[20px] font-semibold text-[var(--ink)] mb-1">
-                Public cases
+                Public projects
               </h2>
               <p className="text-[13px] text-[var(--ink-dim)]">
                 {filteredPublic.length}{" "}
-                {filteredPublic.length === 1 ? "case" : "cases"} available to
+                {filteredPublic.length === 1 ? "project" : "projects"} available to
                 explore
                 {searchQuery && " matching your search"}
               </p>
@@ -311,13 +311,13 @@ export default function HomePage({ onOpenProject }: HomePageProps) {
               </div>
               <h3 className="text-[15px] font-medium text-[var(--ink)] mb-1">
                 {searchQuery
-                  ? "No public cases match your search"
-                  : "No public cases yet"}
+                  ? "No public projects match your search"
+                  : "No public projects yet"}
               </h3>
               <p className="text-[13px] text-[var(--ink-dim)] max-w-sm mx-auto">
                 {searchQuery
                   ? "Try adjusting your search terms"
-                  : "Public cases will appear here when the community shares them"}
+                  : "Public projects will appear here when the community shares them"}
               </p>
             </div>
           ) : (

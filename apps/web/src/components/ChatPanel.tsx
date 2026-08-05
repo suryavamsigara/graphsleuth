@@ -12,14 +12,14 @@ interface ChatMessage {
   steps: ReasoningStep[];
   confidence?: number;
   latencyMs?: number;
-  evidenceId?: string;
+  traceId?: string;
   streaming?: boolean;
   error?: string;
 }
 
 interface ChatPanelProps {
   projectId: string;
-  onEvidence: (evidenceId: string) => void; // tells ExplorePage to render the resulting evidence graph
+  onTrace: (traceId: string) => void; // tells ExplorePage to render the resulting trace graph
 }
 
 const DEPTH_OPTIONS = [
@@ -36,7 +36,7 @@ const CONFIDENCE_OPTIONS = [
   { value: 0.65, label: "Very strict · 0.65" },
 ];
 
-export default function ChatPanel({ projectId, onEvidence }: ChatPanelProps) {
+export default function ChatPanel({ projectId, onTrace }: ChatPanelProps) {
   const { user } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [historyLoaded, setHistoryLoaded] = useState(false);
@@ -71,7 +71,7 @@ export default function ChatPanel({ projectId, onEvidence }: ChatPanelProps) {
             steps: r.steps ?? [],
             confidence: r.confidence ?? undefined,
             latencyMs: r.latency_ms ?? undefined,
-            evidenceId: r.evidence_id ?? undefined,
+            traceId: r.trace_id ?? undefined,
           }))
         );
       })
@@ -121,18 +121,18 @@ export default function ChatPanel({ projectId, onEvidence }: ChatPanelProps) {
               if (event.type === "token") {
                 return { ...m, text: m.text + event.token };
               }
-              if (event.type === "evidence") {
-                return { ...m, evidenceId: event.data?.id };
+              if (event.type === "trace") {
+                return { ...m, traceId: event.data?.id };
               }
               if (event.type === "done") {
-                if (event.evidence_id) onEvidence(event.evidence_id);
+                if (event.trace_id) onTrace(event.trace_id);
                 return {
                   ...m,
                   text: event.answer || m.text,
                   steps: event.steps ?? m.steps,
                   confidence: event.confidence,
                   latencyMs: event.latency_ms,
-                  evidenceId: event.evidence_id,
+                  traceId: event.trace_id,
                   streaming: false,
                 };
               }
@@ -154,7 +154,7 @@ export default function ChatPanel({ projectId, onEvidence }: ChatPanelProps) {
       setBusy(false);
       setMessages((prev) => prev.map((m) => (m.id === assistantId ? { ...m, streaming: false } : m)));
     }
-  }, [input, busy, maxDepth, confidenceThreshold, projectId, onEvidence, scrollToBottom]);
+  }, [input, busy, maxDepth, confidenceThreshold, projectId, onTrace, scrollToBottom]);
 
   return (
     <div className="flex flex-col h-full bg-[var(--panel)]">
@@ -239,7 +239,7 @@ export default function ChatPanel({ projectId, onEvidence }: ChatPanelProps) {
               }
             }}
             rows={1}
-            placeholder="Ask about the case…"
+            placeholder="Ask about the project…"
             className="flex-1 bg-transparent resize-none text-[13px] text-[var(--ink)] placeholder:text-[var(--ink-faint)] focus:outline-none max-h-32"
           />
           <button

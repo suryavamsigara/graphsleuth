@@ -38,8 +38,8 @@ export default function NewCaseModal({ open, onClose, onCreated }: NewCaseModalP
       <div className="w-full max-w-sm rounded-lg border border-[var(--hairline)] bg-[var(--panel)] overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--hairline)]">
           <div>
-            <div className="eyebrow">New case</div>
-            <h2 className="text-[14px] font-medium text-[var(--ink)]">Open a case file</h2>
+            <div className="eyebrow">New project</div>
+            <h2 className="text-[14px] font-medium text-[var(--ink)]">Open a project file</h2>
           </div>
           <button onClick={onClose} className="p-1 rounded-md text-[var(--ink-faint)] hover:text-[var(--ink)] hover:bg-[var(--panel-raised)]">
             <X className="w-4 h-4" />
@@ -67,7 +67,7 @@ export default function NewCaseModal({ open, onClose, onCreated }: NewCaseModalP
               className="accent-[var(--thread)]"
             />
             <span className="text-[12px] text-[var(--ink-dim)]">
-              Make this case public <span className="text-[var(--ink-faint)]">— anyone can explore and ask questions</span>
+              Make this project public <span className="text-[var(--ink-faint)]">— anyone can explore and ask questions</span>
             </span>
           </label>
 
@@ -87,7 +87,7 @@ export default function NewCaseModal({ open, onClose, onCreated }: NewCaseModalP
             )}
           >
             {busy && <Loader2 className="w-3 h-3 animate-spin" />}
-            Open case
+            Open project
           </button>
         </div>
       </div>

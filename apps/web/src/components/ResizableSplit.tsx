@@ -12,7 +12,7 @@ interface ResizableSplitProps {
 export default function ResizableSplit({
   left,
   right,
-  defaultLeftPct = 34,
+  defaultLeftPct = 32,
   minLeftPct = 28,
   maxLeftPct = 60,
 }: ResizableSplitProps) {

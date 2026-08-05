@@ -1,7 +1,7 @@
 /*
   GRAPHSLEUTH DESIGN SYSTEM — "Case Board"
   ------------------------------------------------------------
-  Signature idea: the graph canvas IS the evidence board. Entry
+  Signature idea: the graph canvas IS the trace board. Entry
   nodes are pins, traversal is red/amber string, source chunks
   are exhibit cards with a torn top edge, and confidence reads
   like a stamped case verdict. Everything else (chat, panels,
@@ -33,7 +33,7 @@
   --ink-redacted: #34363c;      /* dimmed / non-relevant nodes */
 
   /* ---- signal colors ---- */
-  --thread: #f2a33e;            /* the evidence string / active trace, amber */
+  --thread: #f2a33e;            /* the trace string / active trace, amber */
   --thread-glow: rgba(242, 163, 62, 0.55);
   --pin: #ef5b4e;               /* entry-node pin, case-file red */
   --pin-glow: rgba(239, 91, 78, 0.5);
@@ -98,7 +98,7 @@ body {
   transform: rotate(-1.2deg);
 }
 
-/* Exhibit card: source chunk styled as a torn evidence clipping */
+/* Exhibit card: source chunk styled as a torn trace clipping */
 .exhibit {
   position: relative;
   background: var(--panel-raised);

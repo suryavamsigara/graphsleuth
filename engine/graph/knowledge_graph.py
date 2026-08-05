@@ -1,5 +1,5 @@
 """
-Knowledge Graph Core + Persistence + Evidence Tracking
+Knowledge Graph Core + Persistence + Reasoning Trace
 """
 
 
@@ -14,7 +14,7 @@ from engine.ports.vector_store import VectorStore
 from engine.embeddings.encoder import EmbeddingEncoder
 from engine.models.node import Node
 from engine.models.edge import Edge
-from engine.models.document import Chunk, Document, EvidencePath
+from engine.models.document import Chunk, Document, ReasoningTrace
 from engine.graph.traversal import TraversalEngine
 
 # ---------------------------------------------------------------------------
@@ -321,7 +321,7 @@ class KnowledgeGraph:
         max_depth: int = 2,
         direction: str = "both",
         min_score: float | None = None,
-    ) -> EvidencePath:
+    ) -> ReasoningTrace:
         """
         Delegate to TraversalEngine, passing graph state.
 
@@ -374,16 +374,16 @@ class KnowledgeGraph:
         return degrees[:top_k]
 
     # ---------------------------------------------------------------------------
-    # Evidence persistence
+    # Trace persistence
     # ---------------------------------------------------------------------------
-    def save_evidence(self, evidence: EvidencePath) -> str:
-        """Persist an evidence path and return its ID."""
-        evidence.project_id = self.project_id
-        return self.store.save_evidence(evidence)
+    def save_trace(self, trace: ReasoningTrace) -> str:
+        """Persist a trace path and return its ID."""
+        trace.project_id = self.project_id
+        return self.store.save_trace(trace)
 
-    def get_past_evidence(self, question: str) -> list[EvidencePath]:
-        """Retrieves previously saved evidence paths for a question, scoped to this project"""
-        return self.store.load_evidence_for_question(question, project_id=self.project_id)
+    def get_past_traces(self, question: str) -> list[ReasoningTrace]:
+        """Retrieves previously saved trace paths for a question, scoped to this project"""
+        return self.store.load_traces_for_question(question, project_id=self.project_id)
 
     def refresh(self) -> None:
         """Reload all in-memory caches from the database."""

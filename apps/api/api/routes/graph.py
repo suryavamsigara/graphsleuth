@@ -4,7 +4,7 @@ from apps.api.core.async_engine import AsyncEngine
 from apps.api.dependencies import get_engine_for_read
 from apps.api.api.schemas.graph import (
     TraverseRequest,
-    EvidenceGraphResponse,
+    TraceGraphResponse,
     GraphNode,
     GraphEdge,
     NodeSearchResponse,
@@ -14,10 +14,10 @@ from apps.api.api.schemas.graph import (
 
 router = APIRouter(prefix="/graph", tags=["graph"])
 
-@router.get("/overview", response_model=EvidenceGraphResponse)
+@router.get("/overview", response_model=TraceGraphResponse)
 async def graph_overview(limit: int = 20, engine: AsyncEngine = Depends(get_engine_for_read)):
     graph = await engine.get_overview_graph(limit)
-    return EvidenceGraphResponse(
+    return TraceGraphResponse(
         nodes=[GraphNode(**n) for n in graph["nodes"]],
         edges=[GraphEdge(**e) for e in graph["edges"]],
     )
@@ -112,17 +112,17 @@ async def get_chunk(chunk_id: str, engine: AsyncEngine = Depends(get_engine_for_
     return ChunkResponse(id=chunk.id, text=chunk.text, document_id=chunk.document_id, index=chunk.index)
 
 
-@router.get("/evidence/{evidence_id}")
-async def get_evidence_graph(
-    evidence_id: str,
+@router.get("/trace/{trace_id}")
+async def get_trace_graph(
+    trace_id: str,
     engine: AsyncEngine = Depends(get_engine_for_read),
 ):
-    evidence = await engine.get_evidence_by_id(evidence_id)
-    if not evidence:
-        raise HTTPException(status_code=404, detail="Evidence not found")
+    trace = await engine.get_trace_by_id(trace_id)
+    if not trace:
+        raise HTTPException(status_code=404, detail="Trace not found")
 
-    graph = await engine.get_evidence_graph(evidence)
-    return EvidenceGraphResponse(
+    graph = await engine.get_trace_graph(trace)
+    return TraceGraphResponse(
         nodes=[GraphNode(**n) for n in graph["nodes"]],
         edges=[GraphEdge(**e) for e in graph["edges"]],
     )

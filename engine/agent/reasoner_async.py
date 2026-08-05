@@ -17,7 +17,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 from engine.client_async import get_async_openai_client, get_async_ollama_client
 from engine.embeddings.encoder import EmbeddingEncoder
-from engine.models.document import EvidencePath
+from engine.models.document import ReasoningTrace
 from engine.graph.knowledge_graph import KnowledgeGraph
 from engine.agent.prompts import REASONER_SYSTEM_PROMPT, ROUTER_PROMPT
 
@@ -25,7 +25,7 @@ from engine.agent.prompts import REASONER_SYSTEM_PROMPT, ROUTER_PROMPT
 @dataclass
 class AgentAnswer:
     answer: str
-    evidence: EvidencePath
+    trace: ReasoningTrace
     reasoning_steps: list[dict]
     model_used: str
     tokens_used: int = 0
@@ -66,7 +66,7 @@ class AsyncGraphReasoner:
         encoder: EmbeddingEncoder,
         model_name: str = "qwen3.5:4b",
         use_openai: bool = False,
-        max_evidence_chunks: int = 8,
+        max_trace_chunks: int = 8,
         max_depth: int = 2,
         top_k: int = 3,
     ):
@@ -74,7 +74,7 @@ class AsyncGraphReasoner:
         self.encoder = encoder
         self.model_name = model_name
         self.use_openai = use_openai
-        self.max_evidence_chunks = max_evidence_chunks
+        self.max_trace_chunks = max_trace_chunks
         self.max_depth = max_depth
         self.top_k = top_k
         self.client = get_async_openai_client() if use_openai else get_async_ollama_client()
@@ -120,7 +120,7 @@ class AsyncGraphReasoner:
     ):
         """
         Full graph-RAG pipeline. Yields SSE-style dict events:
-        {type: "step" | "evidence" | "token" | "error" | "done", ...}
+        {type: "step" | "trace" | "token" | "error" | "done", ...}
         """
         start_time = time.time()
         steps: list[dict] = []
@@ -147,22 +147,22 @@ class AsyncGraphReasoner:
 
         # Step 2: traverse
         t0 = time.time()
-        evidence = await asyncio.to_thread(
+        trace = await asyncio.to_thread(
             self.kg.multi_hop_query, question, resolved_top_k, resolved_max_depth, "both", confidence_threshold
         )
         steps.append({
             "step": 2,
             "action": "traverse_graph",
-            "input": {"entry_nodes": evidence.entry_nodes, "max_depth": resolved_max_depth},
+            "input": {"entry_nodes": trace.entry_nodes, "max_depth": resolved_max_depth},
             "output": {
-                "visited_nodes": len(evidence.visited_nodes),
-                "traversed_edges": len(evidence.traversed_edges),
-                "source_chunks": len(evidence.source_chunks),
+                "visited_nodes": len(trace.visited_nodes),
+                "traversed_edges": len(trace.traversed_edges),
+                "source_chunks": len(trace.source_chunks),
             },
             "latency_ms": round((time.time() - t0) * 1000, 2),
         })
         yield {"type": "step", **steps[-1]}
-        yield {"type": "evidence", "data": evidence.to_dict()}
+        yield {"type": "trace", "data": trace.to_dict()}
 
         # Step 3: read & score chunks
         t0 = time.time()
@@ -170,7 +170,7 @@ class AsyncGraphReasoner:
         chunk_scores: list[tuple[str, str, float]] = []
         query_emb = await asyncio.to_thread(self.encoder.encode_single, question)
 
-        for cid in evidence.source_chunks:
+        for cid in trace.source_chunks:
             chunk = await asyncio.to_thread(self.kg.get_chunk, cid)
             if not chunk:
                 continue
@@ -183,13 +183,13 @@ class AsyncGraphReasoner:
             chunk_lookup[cid] = chunk.text
 
         chunk_scores.sort(key=lambda x: x[2], reverse=True)
-        top_chunks_with_scores = chunk_scores[: self.max_evidence_chunks]
+        top_chunks_with_scores = chunk_scores[: self.max_trace_chunks]
         top_chunks = [f"[CHUNK {c[0]}]:\n{c[1]}" for c in top_chunks_with_scores]
 
         steps.append({
             "step": 3,
             "action": "read_chunks",
-            "input": f"{len(evidence.source_chunks)} chunks available",
+            "input": f"{len(trace.source_chunks)} chunks available",
             "output": f"Retrieved {len(top_chunks)} chunks",
             "latency_ms": round((time.time() - t0) * 1000, 2),
         })
@@ -203,7 +203,7 @@ class AsyncGraphReasoner:
 
         # Step 4: build context
         entity_context: list[str] = []
-        for nid in evidence.visited_nodes[:15]:
+        for nid in trace.visited_nodes[:15]:
             node = await asyncio.to_thread(self.kg.get_node, nid)
             if node:
                 entity_context.append(
@@ -211,7 +211,7 @@ class AsyncGraphReasoner:
                 )
 
         edge_context: list[str] = []
-        for edge in evidence.traversed_edges[:10]:
+        for edge in trace.traversed_edges[:10]:
             src = await asyncio.to_thread(self.kg.get_node, edge.source_id)
             tgt = await asyncio.to_thread(self.kg.get_node, edge.target_id)
             if src and tgt:
@@ -275,16 +275,16 @@ class AsyncGraphReasoner:
         yield {"type": "step", **steps[-1]}
 
         # Step 6: persist
-        evidence.answer = answer_text
-        evidence.confidence = confidence
-        evidence_id = await asyncio.to_thread(self.kg.save_evidence, evidence)
+        trace.answer = answer_text
+        trace.confidence = confidence
+        trace_id = await asyncio.to_thread(self.kg.save_trace, trace)
 
         total_latency = round((time.time() - start_time) * 1000, 2)
         steps.append({
             "step": 6,
-            "action": "save_evidence",
-            "input": evidence_id,
-            "output": "Evidence path persisted",
+            "action": "save_trace",
+            "input": trace_id,
+            "output": "Reasoning trace persisted",
             "latency_ms": 0,
         })
 
@@ -293,7 +293,7 @@ class AsyncGraphReasoner:
         yield {
             "type": "done",
             "answer": answer_text,
-            "evidence_id": evidence_id,
+            "trace_id": trace_id,
             "tokens_used": tokens_used,
             "latency_ms": total_latency,
             "confidence": confidence,
@@ -363,7 +363,7 @@ class AsyncGraphReasoner:
         yield {
             "type": "done",
             "answer": answer_text,
-            "evidence_id": None,
+            "trace_id": None,
             "tokens_used": tokens_used,
             "latency_ms": total_latency,
             "confidence": 1.0,
@@ -379,7 +379,7 @@ class AsyncGraphReasoner:
         max_depth: int | None = None,
         history: list[dict] | None = None,
     ):
-        """Yields SSE-style dict events: step, evidence, token, done.
+        """Yields SSE-style dict events: step, trace, token, done.
 
         `confidence_threshold` (0-1, from the chat panel's "confidence
         threshold" dropdown) is passed straight through to

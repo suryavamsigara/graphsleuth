@@ -5,7 +5,7 @@ from pathlib import Path
 
 from engine.models.node import Node
 from engine.models.edge import Edge
-from engine.models.document import Chunk, Document, EvidencePath
+from engine.models.document import Chunk, Document, ReasoningTrace
 from engine.ports.graph_store import GraphStore
 
 class PostgresGraphStore(GraphStore):
@@ -190,9 +190,9 @@ class PostgresGraphStore(GraphStore):
             "ingested_at": row["ingested_at"],
         })
 
-    # Evidence
+    # Trace
 
-    def save_evidence(self, ev: EvidencePath) -> str:
+    def save_trace(self, ev: ReasoningTrace) -> str:
         import json
         from datetime import datetime
 
@@ -207,7 +207,7 @@ class PostgresGraphStore(GraphStore):
         with self._conn.transaction():
             self._conn.execute(
                 """
-                INSERT INTO evidence_paths (
+                INSERT INTO traces (
                     id, question, entry_nodes, visited_nodes, 
                     traversed_edges, source_chunks, answer, confidence, created_at
                 )
@@ -237,17 +237,17 @@ class PostgresGraphStore(GraphStore):
             
         return str(d["id"])
 
-    def load_evidence_for_question(self, question: str, limit: int = 10) -> list[EvidencePath]:
+    def load_traces_for_question(self, question: str, limit: int = 10) -> list[ReasoningTrace]:
         rows = self._conn.execute(
             """
-            SELECT * FROM evidence_paths
+            SELECT * FROM traces
             WHERE question = %s
             ORDER BY confidence DESC, created_at DESC
             LIMIT %s
             """,
             (question, limit),
         ).fetchall()
-        return [self._row_to_evidence(row) for row in rows]
+        return [self._row_to_trace(row) for row in rows]
 
     def close(self) -> None:
         self._conn.close()
@@ -265,5 +265,5 @@ class PostgresGraphStore(GraphStore):
         })
 
     @staticmethod
-    def _row_to_evidence(row) -> EvidencePath:
-        return EvidencePath.from_dict(row)
+    def _row_to_trace(row) -> ReasoningTrace:
+        return ReasoningTrace.from_dict(row)

@@ -96,7 +96,7 @@ export default function IngestModal({ projectId, open, onClose, onIngested }: In
         <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--hairline)]">
           <div>
             <div className="eyebrow">Intake</div>
-            <h2 className="text-[14px] font-medium text-[var(--ink)]">Add evidence to the case</h2>
+            <h2 className="text-[14px] font-medium text-[var(--ink)]">Add trace to the project</h2>
           </div>
           <button
             onClick={onClose}

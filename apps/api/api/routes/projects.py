@@ -57,7 +57,7 @@ async def get_project(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     if not project.is_public and (not user or project.owner_id != user.id):
-        raise HTTPException(status_code=403, detail="You don't have access to this case")
+        raise HTTPException(status_code=403, detail="You don't have access to this project")
     return _to_response(project, user.id if user else None)
 
 
@@ -72,7 +72,7 @@ async def update_project(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     if project.owner_id != user.id:
-        raise HTTPException(status_code=403, detail="Only the case owner can edit it")
+        raise HTTPException(status_code=403, detail="Only the project owner can edit it")
     updated = store.update(project_id, name=req.name, is_public=req.is_public)
     return _to_response(updated, user.id)
 
@@ -87,6 +87,6 @@ async def delete_project(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     if project.owner_id != user.id:
-        raise HTTPException(status_code=403, detail="Only the case owner can delete it")
+        raise HTTPException(status_code=403, detail="Only the project owner can delete it")
     store.delete(project_id)
     return {"success": True}

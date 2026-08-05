@@ -51,7 +51,7 @@ async def _stream_answer(
                 steps=event.get("steps", []),
                 confidence=event.get("confidence", 0.0),
                 latency_ms=event.get("latency_ms", 0.0),
-                evidence_id=event.get("evidence_id"),
+                trace_id=event.get("trace_id"),
             )
         yield {"data": json.dumps(event)}
 
@@ -81,7 +81,7 @@ async def query_sync(
 ):
     """Non-streaming query: collects all events and returns final answer."""
     answer = ""
-    evidence_id = None
+    trace_id = None
     steps = []
     tokens_used = 0
     latency_ms = 0
@@ -96,7 +96,7 @@ async def query_sync(
         if event.get("type") == "token":
             answer += event.get("token", "")
         elif event.get("type") == "done":
-            evidence_id = event.get("evidence_id")
+            trace_id = event.get("trace_id")
             steps = event.get("steps", [])
             tokens_used = event.get("tokens_used", 0)
             latency_ms = event.get("latency_ms", 0)
@@ -114,12 +114,12 @@ async def query_sync(
             steps=steps,
             confidence=confidence,
             latency_ms=latency_ms,
-            evidence_id=evidence_id,
+            trace_id=trace_id,
         )
 
     return {
         "answer": answer,
-        "evidence_id": evidence_id,
+        "trace_id": trace_id,
         "steps": steps,
         "tokens_used": tokens_used,
         "latency_ms": latency_ms,

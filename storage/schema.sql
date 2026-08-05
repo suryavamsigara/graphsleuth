@@ -82,7 +82,7 @@ CREATE TABLE IF NOT EXISTS edges (
     UNIQUE (source_id, target_id, relation, source_chunk_id)
 );
 
-CREATE TABLE IF NOT EXISTS evidence_paths (
+CREATE TABLE IF NOT EXISTS traces (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     question TEXT NOT NULL,
@@ -105,7 +105,7 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     steps JSONB DEFAULT '[]',
     confidence REAL,
     latency_ms REAL,
-    evidence_id UUID REFERENCES evidence_paths(id) ON DELETE SET NULL,
+    trace_id UUID REFERENCES traces(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -127,7 +127,7 @@ CREATE INDEX IF NOT EXISTS idx_nodes_project ON nodes (project_id);
 CREATE INDEX IF NOT EXISTS idx_edges_project ON edges (project_id);
 CREATE INDEX IF NOT EXISTS idx_chunks_project ON chunks (project_id);
 CREATE INDEX IF NOT EXISTS idx_documents_project ON documents (project_id);
-CREATE INDEX IF NOT EXISTS idx_evidence_project ON evidence_paths (project_id);
+CREATE INDEX IF NOT EXISTS idx_traces_project ON traces (project_id);
 
 
 CREATE INDEX IF NOT EXISTS idx_chat_messages_project_user
@@ -138,7 +138,7 @@ CREATE INDEX IF NOT EXISTS idx_edges_source ON edges (source_id);
 CREATE INDEX IF NOT EXISTS idx_edges_target ON edges (target_id);
 CREATE INDEX IF NOT EXISTS idx_edges_relation ON edges (relation);
 CREATE INDEX IF NOT EXISTS idx_chunks_doc ON chunks (document_id);
-CREATE INDEX IF NOT EXISTS idx_evidence_question ON evidence_paths (question);
+CREATE INDEX IF NOT EXISTS idx_traces_question ON traces (question);
 CREATE INDEX IF NOT EXISTS idx_nodes_type ON nodes (node_type);
 
 -- -----------------------------------------------------------------------------
@@ -204,7 +204,7 @@ ALTER TABLE documents ENABLE ROW LEVEL SECURITY;
 ALTER TABLE chunks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE nodes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE edges ENABLE ROW LEVEL SECURITY;
-ALTER TABLE evidence_paths ENABLE ROW LEVEL SECURITY;
+ALTER TABLE traces ENABLE ROW LEVEL SECURITY;
 ALTER TABLE chat_messages ENABLE ROW LEVEL SECURITY;
 
 -- chat_messages gets its own policies rather than joining the shared loop
@@ -256,7 +256,7 @@ DO $$
 DECLARE
     t TEXT;
 BEGIN
-    FOREACH t IN ARRAY ARRAY['documents', 'chunks', 'nodes', 'edges', 'evidence_paths']
+    FOREACH t IN ARRAY ARRAY['documents', 'chunks', 'nodes', 'edges', 'traces']
     LOOP
         EXECUTE format('DROP POLICY IF EXISTS "%1$s: read via project" ON %1$s;', t);
         EXECUTE format($f$

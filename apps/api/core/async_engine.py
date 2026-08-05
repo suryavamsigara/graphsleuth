@@ -4,7 +4,7 @@ from typing import AsyncGenerator
 from engine.ingestion.pipeline import IngestionPipeline
 from engine.graph.knowledge_graph import KnowledgeGraph
 from engine.agent.reasoner_async import AsyncGraphReasoner
-from engine.models.document import EvidencePath
+from engine.models.document import ReasoningTrace
 
 
 class AsyncEngine:
@@ -72,12 +72,12 @@ class AsyncEngine:
         return await asyncio.to_thread(self.kg.get_chunk, chunk_id)
 
 
-    async def get_evidence_by_id(self, evidence_id: str) -> EvidencePath | None:
-        return await asyncio.to_thread(self.kg.store.get_evidence, evidence_id)
+    async def get_trace_by_id(self, trace_id: str) -> ReasoningTrace | None:
+        return await asyncio.to_thread(self.kg.store.get_trace, trace_id)
 
-    async def get_evidence_graph(self, evidence: EvidencePath) -> dict:
+    async def get_trace_graph(self, trace: ReasoningTrace) -> dict:
         def _build():
-            node_ids = set(evidence.visited_nodes) | set(evidence.entry_nodes)
+            node_ids = set(trace.visited_nodes) | set(trace.entry_nodes)
             nodes = []
             for nid in node_ids:
                 n = self.kg.get_node(nid)
@@ -89,12 +89,12 @@ class AsyncEngine:
                         "label": n.name,
                         "type": n.node_type,
                         "description": n.description,
-                        "is_entry": nid in evidence.entry_nodes,
+                        "is_entry": nid in trace.entry_nodes,
                     }
                 )
             edges = [
                 {"id": e.id, "source": e.source_id, "target": e.target_id, "label": e.relation}
-                for e in evidence.traversed_edges
+                for e in trace.traversed_edges
             ]
             return {"nodes": nodes, "edges": edges}
 

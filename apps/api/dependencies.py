@@ -84,7 +84,7 @@ def get_agent(project_id: str) -> AsyncGraphReasoner:
         encoder=get_encoder(),
         model_name=os.getenv("LLM_MODEL", "deepseek-v4-flash"),
         use_openai=os.getenv("USE_OPENAI", "true").lower() == "true",
-        max_evidence_chunks=int(os.getenv("MAX_EVIDENCE_CHUNKS", "12")),
+        max_trace_chunks=int(os.getenv("MAX_EVIDENCE_CHUNKS", "12")),
         top_k=int(os.getenv("TOP_K", "5")),
     )
 

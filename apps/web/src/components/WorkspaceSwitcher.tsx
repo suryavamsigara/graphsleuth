@@ -49,7 +49,7 @@ export default function WorkspaceSwitcher({ projects, active, onSelect, onGoHome
             className="w-full text-left px-3 py-2 text-[13px] text-[var(--ink-dim)] hover:bg-[var(--panel)] transition-colors flex items-center gap-2 border-b border-[var(--hairline)]"
           >
             <Home className="w-3.5 h-3.5" />
-            All cases
+            All projects
           </button>
 
           {mine.length > 0 && (

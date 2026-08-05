@@ -6,7 +6,7 @@ import { useAuth } from "../lib/authContext";
 import Header from "../components/Header";
 import ResizableSplit from "../components/ResizableSplit";
 import ChatPanel from "../components/ChatPanel";
-import GraphViewer, { EvidencePath } from "../components/GraphViewer";
+import GraphViewer, { ReasoningTrace } from "../components/GraphViewer";
 import NodePanel from "../components/NodePanel";
 import IngestModal from "../components/IngestModal";
 
@@ -37,7 +37,7 @@ export default function ExplorePage({ projectId, onGoHome, onSelectProject }: Ex
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [graphData, setGraphData] = useState<{ nodes: GraphNode[]; edges: GraphEdge[] }>({ nodes: [], edges: [] });
-  const [evidencePath, setEvidencePath] = useState<EvidencePath | null>(null);
+  const [reasoningTrace, setReasoningTrace] = useState<ReasoningTrace | null>(null);
   const [ingestOpen, setIngestOpen] = useState(false);
 
   const loadOverview = useCallback(async () => {
@@ -49,12 +49,12 @@ export default function ExplorePage({ projectId, onGoHome, onSelectProject }: Ex
     }
   }, [projectId]);
 
-  // Reset the board whenever the active case changes
+  // Reset the board whenever the active project changes
   useEffect(() => {
     setSelectedNodeId(null);
     setSelectedNode(null);
     setGraphData({ nodes: [], edges: [] });
-    setEvidencePath(null);
+    setReasoningTrace(null);
     loadOverview();
   }, [projectId, loadOverview]);
 
@@ -79,7 +79,7 @@ export default function ExplorePage({ projectId, onGoHome, onSelectProject }: Ex
   const loadNodeNeighborhood = useCallback(
     async (nodeId: string) => {
       setSelectedNodeId(nodeId);
-      setEvidencePath(null);
+      setReasoningTrace(null);
 
       const node = await api.graph.getNode(projectId, nodeId);
       setSelectedNode({ id: node.id, label: node.name, type: node.node_type, description: node.description });
@@ -107,22 +107,22 @@ export default function ExplorePage({ projectId, onGoHome, onSelectProject }: Ex
     [projectId]
   );
 
-  // When a chat answer completes, pull the evidence graph and light up the trail
-  const handleEvidence = useCallback(
-    async (evidenceId: string) => {
+  // When a chat answer completes, pull the trace graph and light up the trail
+  const handleTrace = useCallback(
+    async (traceId: string) => {
       try {
-        const graph = await api.graph.evidenceGraph(projectId, evidenceId);
+        const graph = await api.graph.traceGraph(projectId, traceId);
         if (!graph.nodes.length) {
-          console.warn("[ExplorePage] evidence graph came back empty for", evidenceId);
+          console.warn("[ExplorePage] trace graph came back empty for", traceId);
           return;
         }
         const nodes: GraphNode[] = graph.nodes.map((n: any) => ({ ...n, is_entry: n.is_entry }));
         setGraphData({ nodes, edges: graph.edges });
-        setEvidencePath({ nodeIds: nodes.map((n) => n.id), edgeIds: graph.edges.map((e: any) => e.id) });
+        setReasoningTrace({ nodeIds: nodes.map((n) => n.id), edgeIds: graph.edges.map((e: any) => e.id) });
         setSelectedNode(null);
         setSelectedNodeId(null);
       } catch (e) {
-        console.error("[ExplorePage] evidenceGraph fetch failed:", e);
+        console.error("[ExplorePage] traceGraph fetch failed:", e);
       }
     },
     [projectId]
@@ -163,7 +163,7 @@ export default function ExplorePage({ projectId, onGoHome, onSelectProject }: Ex
 
       <div className="flex-1 min-h-0">
         <ResizableSplit
-          left={<ChatPanel key={projectId} projectId={projectId} onEvidence={handleEvidence} />}
+          left={<ChatPanel key={projectId} projectId={projectId} onTrace={handleTrace} />}
           right={
             <div className="relative w-full h-full p-3">
               <div className="absolute top-6 left-6 right-6 z-30">
@@ -205,7 +205,7 @@ export default function ExplorePage({ projectId, onGoHome, onSelectProject }: Ex
                   setSelectedNodeId(n?.id ?? null);
                 }}
                 selectedNodeId={selectedNodeId}
-                evidencePath={evidencePath}
+                reasoningTrace={reasoningTrace}
               />
               <NodePanel
                 projectId={projectId}

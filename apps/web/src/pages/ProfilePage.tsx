@@ -47,7 +47,7 @@ export default function ProfilePage({ onGoHome }: ProfilePageProps) {
           className="flex items-center gap-1.5 text-[12px] text-[var(--ink-faint)] hover:text-[var(--ink-dim)] transition-colors mb-8"
         >
           <ArrowLeft className="w-3.5 h-3.5" />
-          Back to cases
+          Back to projects
         </button>
 
         <div className="rounded-lg border border-[var(--hairline)] bg-[var(--panel)] overflow-hidden">

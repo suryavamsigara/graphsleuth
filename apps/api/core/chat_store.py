@@ -10,7 +10,7 @@ class ChatMessageRow:
     steps: list
     confidence: float | None
     latency_ms: float | None
-    evidence_id: str | None
+    trace_id: str | None
     created_at: str
 
 
@@ -40,7 +40,7 @@ class ChatStore:
         steps: list,
         confidence: float,
         latency_ms: float,
-        evidence_id: str | None,
+        trace_id: str | None,
     ) -> None:
         """Persists one full chat turn as two rows (user question,
         assistant answer) — matches the shape the frontend already renders,
@@ -55,7 +55,7 @@ class ChatStore:
                 "steps": [],
                 "confidence": None,
                 "latency_ms": None,
-                "evidence_id": None,
+                "trace_id": None,
             },
             {
                 "project_id": project_id,
@@ -65,7 +65,7 @@ class ChatStore:
                 "steps": steps,
                 "confidence": confidence,
                 "latency_ms": latency_ms,
-                "evidence_id": evidence_id,
+                "trace_id": trace_id,
             },
         ]).execute()
 
@@ -81,6 +81,6 @@ class ChatStore:
             steps=row.get("steps") or [],
             confidence=row.get("confidence"),
             latency_ms=row.get("latency_ms"),
-            evidence_id=row.get("evidence_id"),
+            trace_id=row.get("trace_id"),
             created_at=row["created_at"],
         )

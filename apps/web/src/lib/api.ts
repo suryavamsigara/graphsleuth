@@ -31,7 +31,7 @@ export interface ReasoningStep {
 export interface QueryDoneEvent {
   type: "done";
   answer: string;
-  evidence_id: string;
+  trace_id: string;
   tokens_used: number;
   latency_ms: number;
   confidence: number; // 0-1
@@ -151,7 +151,7 @@ export const api = {
         steps: ReasoningStep[];
         confidence: number | null;
         latency_ms: number | null;
-        evidence_id: string | null;
+        trace_id: string | null;
         created_at: string;
       }[]
     > => fetchJson("/chat/messages", {}, projectId),
@@ -171,8 +171,8 @@ export const api = {
         { method: "POST", body: JSON.stringify({ start_node_id, max_depth, direction }) },
         projectId
       ),
-    evidenceGraph: (projectId: string, evidenceId: string) =>
-      fetchJson(`/graph/evidence/${evidenceId}`, {}, projectId),
+    traceGraph: (projectId: string, traceId: string) =>
+      fetchJson(`/graph/trace/${traceId}`, {}, projectId),
     overview: (projectId: string, limit = 25) =>
       fetchJson(`/graph/overview?limit=${limit}`, {}, projectId),
   },

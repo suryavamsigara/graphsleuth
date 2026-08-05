@@ -29,7 +29,7 @@ async def list_messages(
             steps=r.steps,
             confidence=r.confidence,
             latency_ms=r.latency_ms,
-            evidence_id=r.evidence_id,
+            trace_id=r.trace_id,
             created_at=r.created_at,
         )
         for r in rows

@@ -22,7 +22,7 @@ class GraphEdge(BaseModel):
     label: str
 
 
-class EvidenceGraphResponse(BaseModel):
+class TraceGraphResponse(BaseModel):
     nodes: list[GraphNode]
     edges: list[GraphEdge]
 

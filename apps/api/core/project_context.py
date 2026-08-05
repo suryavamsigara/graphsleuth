@@ -33,10 +33,10 @@ async def get_current_project(
         return project
 
     if user is None:
-        raise HTTPException(status_code=401, detail="This case is private — sign in to access it")
+        raise HTTPException(status_code=401, detail="This project is private — sign in to access it")
 
     if project.owner_id != user.id:
-        raise HTTPException(status_code=403, detail="You don't have access to this case")
+        raise HTTPException(status_code=403, detail="You don't have access to this project")
 
     return project
 
@@ -46,8 +46,8 @@ async def require_project_owner(
     user: AuthedUser = Depends(get_current_user),
 ) -> Project:
     """Stricter gate for writes (ingesting documents, running queries that
-    persist evidence into the project). Public+readable is not the same as
+    persist trace into the project). Public+readable is not the same as
     writable — only the owner writes."""
     if project.owner_id != user.id:
-        raise HTTPException(status_code=403, detail="Only the case owner can modify it")
+        raise HTTPException(status_code=403, detail="Only the project owner can modify it")
     return project

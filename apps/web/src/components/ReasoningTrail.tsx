@@ -8,7 +8,7 @@ const STEP_ICON: Record<string, any> = {
   traverse_graph: Route,
   read_chunks: FileSearch,
   synthesize: Sparkles,
-  save_evidence: Save,
+  save_trace: Save,
 };
 
 const STEP_LABEL: Record<string, string> = {
@@ -16,7 +16,7 @@ const STEP_LABEL: Record<string, string> = {
   traverse_graph: "Traversed the graph",
   read_chunks: "Read source chunks",
   synthesize: "Synthesized answer",
-  save_evidence: "Filed evidence path",
+  save_trace: "Filed trace path",
 };
 
 function summarizeOutput(step: ReasoningStep): string {

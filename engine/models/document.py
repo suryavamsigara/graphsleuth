@@ -48,7 +48,7 @@ class Document:
 
 
 @dataclass
-class EvidencePath:
+class ReasoningTrace:
     """
     A traceable path through the graph that an agent followed to answer a question.
     """
@@ -78,7 +78,7 @@ class EvidencePath:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> "EvidencePath":
+    def from_dict(cls, data: dict) -> "ReasoningTrace":
         def _as_list(v):
             if v is None:
                 return []

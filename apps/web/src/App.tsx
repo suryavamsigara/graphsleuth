@@ -20,13 +20,13 @@ function useRoute() {
     return () => window.removeEventListener("hashchange", onChange);
   }, []);
 
-  const caseMatch = hash.match(/^#\/case\/(.+)$/);
+  const projectMatch = hash.match(/^#\/project\/(.+)$/);
   const isLogin = hash === "#/login";
   const isRegister = hash === "#/register";
   const isProfile = hash === "#/profile";
 
   return {
-    projectId: caseMatch ? decodeURIComponent(caseMatch[1]) : null,
+    projectId: projectMatch ? decodeURIComponent(projectMatch[1]) : null,
     authMode: isLogin ? ("login" as const) : isRegister ? ("register" as const) : null,
     isProfile,
   };
@@ -38,8 +38,8 @@ function Router() {
   const goHome = () => {
     window.location.hash = "";
   };
-  const openCase = (id: string) => {
-    window.location.hash = `#/case/${encodeURIComponent(id)}`;
+  const openProject = (id: string) => {
+    window.location.hash = `#/project/${encodeURIComponent(id)}`;
   };
 
   if (authMode) {
@@ -57,9 +57,9 @@ function Router() {
   }
 
   if (projectId) {
-    return <ExplorePage projectId={projectId} onGoHome={goHome} onSelectProject={openCase} />;
+    return <ExplorePage projectId={projectId} onGoHome={goHome} onSelectProject={openProject} />;
   }
-  return <HomePage onOpenProject={openCase} />;
+  return <HomePage onOpenProject={openProject} />;
 }
 
 export default function App() {

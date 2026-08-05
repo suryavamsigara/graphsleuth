@@ -75,7 +75,7 @@ export default function AuthPage({ mode, onSwitchMode, onDone }: AuthPageProps) 
           className="flex items-center gap-1.5 text-[12px] text-[var(--ink-faint)] hover:text-[var(--ink-dim)] transition-colors mb-6"
         >
           <ArrowLeft className="w-3.5 h-3.5" />
-          Back to cases
+          Back to projects
         </button>
 
         <div className="rounded-lg border border-[var(--hairline)] bg-[var(--panel)] overflow-hidden">
@@ -157,7 +157,7 @@ export default function AuthPage({ mode, onSwitchMode, onDone }: AuthPageProps) 
               className="text-[12px] text-[var(--ink-dim)] hover:text-[var(--ink)]"
             >
               {isRegister ? (
-                <>Already have a case file? <span className="text-[var(--thread)]">Sign in</span></>
+                <>Already have a project file? <span className="text-[var(--thread)]">Sign in</span></>
               ) : (
                 <>New here? <span className="text-[var(--thread)]">Create an account</span></>
               )}
