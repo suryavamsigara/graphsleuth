@@ -12,6 +12,7 @@ on:
       - 'pyproject.toml'
       - 'uv.lock'
       - '.github/workflows/deploy.yml'
+  workflow_dispatch:
 
 jobs:
   deploy:
