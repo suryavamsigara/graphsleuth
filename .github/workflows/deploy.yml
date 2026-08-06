@@ -3,7 +3,7 @@ name: Deploy backend to AWS EC2
 on:
   push:
     branches:
-      - main
+      - master
     paths:
       - 'engine/**'
       - 'apps/api/**'
@@ -31,7 +31,7 @@ jobs:
           key: ${{ secrets.EC2_KEY }}
           script: |
             cd ~/graphsleuth
-            git pull origin main
+            git pull origin master
 
             docker build -t graphsleuth-api .
             docker stop graphsleuth || true
