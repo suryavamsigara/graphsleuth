@@ -11,7 +11,7 @@ on:
       - 'Dockerfile'
       - 'pyproject.toml'
       - 'uv.lock'
-      - '.github/workflows/deploy/yml'
+      - '.github/workflows/deploy.yml'
 
 jobs:
   deploy:
