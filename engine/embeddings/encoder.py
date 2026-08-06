@@ -1,5 +1,5 @@
 """
-Local + HF Spaces encoder
+Local + Remote encoder
 """
 
 import os
@@ -16,23 +16,23 @@ class EmbeddingEncoder:
     def encode_single(self, text: str) -> list[float]:
         return self.encode(text)[0]
 
-class LocalEncoder(EmbeddingEncoder):
-    """CPU bound sentence transformers (local dev)"""
-    def __init__(self, model_name: str = "BAAI/bge-small-en-v1.5", dimensionality: int = 384):
-        from sentence_transformers import SentenceTransformer
-        self.model_name = model_name
-        self.model = SentenceTransformer(self.model_name)
-        self.dimensionality = dimensionality
+# class LocalEncoder(EmbeddingEncoder):
+#     """CPU bound sentence transformers (local dev)"""
+#     def __init__(self, model_name: str = "BAAI/bge-small-en-v1.5", dimensionality: int = 384):
+#         from sentence_transformers import SentenceTransformer
+#         self.model_name = model_name
+#         self.model = SentenceTransformer(self.model_name)
+#         self.dimensionality = dimensionality
 
-    def encode(self, texts: str | list[str]) -> list[list[float]]:
-        if isinstance(texts, str):
-            texts = [texts]
-        embeddings = self.model.encode(
-            texts,
-            convert_to_numpy=True,
-            show_progress_bar=False
-        )
-        return embeddings.tolist()
+#     def encode(self, texts: str | list[str]) -> list[list[float]]:
+#         if isinstance(texts, str):
+#             texts = [texts]
+#         embeddings = self.model.encode(
+#             texts,
+#             convert_to_numpy=True,
+#             show_progress_bar=False
+#         )
+#         return embeddings.tolist()
 
 
 class RemoteEncoder(EmbeddingEncoder):

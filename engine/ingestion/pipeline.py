@@ -47,7 +47,6 @@ class IngestionPipeline:
         try:
             # 1. Extract text
             raw_text = extract_text_from_file(file_path)
-            print("RAW TEXT:\n\n", raw_text)
             if not raw_text.strip():
                 return {
                     "success": False,
@@ -104,11 +103,6 @@ class IngestionPipeline:
                     chunk_id=chunk_id,
                     existing_nodes=self.kg.nodes,
                 )
-
-                print(20*"=")
-                print("New Nodes: \n", new_nodes)
-                print("New edges: \n", new_edges)
-                print(20*"=")
 
                 # Merge deduplicated nodes (kg.add_node tags project_id)
                 for node in new_nodes:

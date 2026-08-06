@@ -1,5 +1,5 @@
 def main():
-    print("Hello from twinedb!")
+    print("Hello from GraphSleuth!")
 
 
 if __name__ == "__main__":

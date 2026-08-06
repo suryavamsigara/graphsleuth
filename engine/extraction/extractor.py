@@ -52,10 +52,8 @@ class EntityExtractor:
         existing_nodes: dict[str, Node] | None = None,
     ) -> tuple[list[Node], list[Edge]]:
         """Extracts nodes and edges from a single chunk."""
-        print("Extracting...")
         raw_json = self._call_llm_with_retry(chunk_text)
         parsed = ExtractionResult.model_validate(raw_json)
-        print("Extracted!")
 
         nodes_dict: dict[str, Node] = {}
         name_to_node_id: dict[str, str] = {}
@@ -121,7 +119,6 @@ class EntityExtractor:
 
     def _call_llm_with_retry(self, chunk_text: str):
         prompt = EXTRACTION_PROMPT.replace("{chunk_text}", chunk_text.strip())
-        print(chunk_text.strip())
 
         messages = [
             {"role": "system", "content": "You are a precise data extraction system. Always respond with raw JSON matching the expected format. CRUCIAL: Every entity must include the 'aliases' list field, even if it is empty []."},

@@ -174,7 +174,6 @@ class TraversalEngine:
         """
 
         valid_entries = [(nid, score) for nid, score in entry_nodes_with_scores if score >= self.min_entry_score]
-        print("Valid: ", valid_entries)
 
         if not valid_entries:
             chunk_results = search_chunks(question, k=5)

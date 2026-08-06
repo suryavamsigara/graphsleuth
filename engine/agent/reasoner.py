@@ -156,8 +156,6 @@ class GraphReasoner:
                 chunk_scores.append((cid, chunk.text, score))
                 chunk_lookup[cid] = chunk.text
 
-        print(chunk_scores)
-
         chunk_scores.sort(key=lambda x: x[2], reverse=True)
         top_chunks = [
             f"[CHUNK {c_data[0]}]:\n{c_data[1]}"
