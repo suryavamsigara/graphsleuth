@@ -1,0 +1,47 @@
+name: Deploy backend to AWS EC2
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'engine/**'
+      - 'apps/api/**'
+      - 'storage/**'
+      - 'Dockerfile'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - '.github/workflows/deploy/yml'
+
+jobs:
+  deploy:
+    name: Build and deploy container on EC2
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository code
+        uses: actions/checkout@v4
+      
+      - name: Execute remote SSH deployment commands
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.EC2_KEY }}
+          script: |
+            cd ~/graphsleuth
+            git pull origin main
+
+            docker build -t graphsleuth-api .
+            docker stop graphsleuth || true
+            docker rm graphsleuth || true
+
+            docker run -d \
+              --name graphsleuth \
+              --restart unless-stopped \
+              -p 127.0.0.1:8000:8000 \
+              --env-file .env \
+              graphsleuth-api
+            
+            sudo nginx -s reload
+            echo "Successfully deployed at $(date)"
