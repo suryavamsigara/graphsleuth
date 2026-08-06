@@ -4,7 +4,9 @@ Local + HF Spaces encoder
 
 import os
 import httpx
-import numpy as np
+from dotenv import load_dotenv
+
+load_dotenv()
 
 class EmbeddingEncoder:
     """Base interface. Returns list[float] per text."""
@@ -34,33 +36,37 @@ class LocalEncoder(EmbeddingEncoder):
 
 
 class RemoteEncoder(EmbeddingEncoder):
-    """HTTP call to HF Spaces embedding service."""
-    def __init__(self, space_url: str | None = None, api_key: str | None = None):
-        self.space_url = (space_url or os.getenv("HF_SPACE_URL", "")).rstrip("/")
-        self.api_key = api_key
-        if not self.space_url:
-            raise ValueError("HF_SPACE_URL env var required for HFSpacesEncoder")
-        self._client = httpx.Client(timeout=60.0)
+    """HTTP call to cloudflare embedding service."""
+    def __init__(self, model_name: str, dimensionality: int = 384):
+        self.account_id = os.getenv("CLOUDFLARE_ACCOUNT_ID", "")
+        self.api_token = os.getenv("CLOUDFLARE_API_TOKEN", "")
+        self.model_name = model_name or os.getenv("EMBEDDING_MODEL_NAME")
+
+        if not self.account_id:
+            raise ValueError("CLOUDFLARE_ACCOUNT_ID required for RemoteEncoder")
+        if not self.api_token:
+            raise ValueError("CLOUDFLARE_API_TOKEN required for RemoteEncoder")
+
+        self.url = f"https://api.cloudflare.com/client/v4/accounts/{self.account_id}/ai/run/@cf/{self.model_name}"
+        
+        self._client = httpx.Client(
+            timeout=60.0,
+            headers={"Authorization": f"Bearer {self.api_token}"}
+        )
 
     def encode(self, texts: str | list[str]) -> list[list[float]]:
-        if isinstance(texts, str):
-            texts = [texts]
+        is_single_str = isinstance(texts, str)
         
-        headers = {}
-        if self.api_key:
-            headers["Authorization"] = f"Bearer {self.api_key}"
-        resp = self._client.post(
-            f"{self.space_url}/embed",
-            json={"texts": texts},
-            headers=headers,
-        )
-        resp.raise_for_status()
-        return resp.json()["embeddings"]
+        payload = {"text": [texts] if is_single_str else texts}
+            
+        resp = self._client.post(self.url, json=payload)
 
-    def health(self) -> dict:
-        try:
-            r = self._client.get(f"{self.space_url}/health", timeout=10.0)
-            r.raise_for_status()
-            return r.json()
-        except Exception as e:
-            return {"status": "error", "detail": str(e)}
+        if resp.status_code != 200:
+            print(f"[RemoteEncoder Error Body]: {resp.text}")
+            resp.raise_for_status()
+
+        resp.raise_for_status()
+        data = resp.json()["result"]["data"]
+        if len(texts) == 1 and isinstance(data[0], float):
+            return [data]
+        return data

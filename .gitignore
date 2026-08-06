@@ -10,7 +10,6 @@ wheels/
 .venv
 
 .env
-tests/
 file.txt
 graph_exports/
 db/

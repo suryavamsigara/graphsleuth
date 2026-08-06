@@ -7,7 +7,7 @@ from supabase import Client, create_client
 from engine.graph.knowledge_graph import KnowledgeGraph
 from engine.extraction.extractor import EntityExtractor
 from engine.ingestion.pipeline import IngestionPipeline
-from engine.embeddings.encoder import LocalEncoder, EmbeddingEncoder
+from engine.embeddings.encoder import LocalEncoder, EmbeddingEncoder, RemoteEncoder
 from engine.agent.reasoner_async import AsyncGraphReasoner
 from storage.supabase.graph_store import SupabaseGraphStore
 from storage.supabase.vector_store import SupabaseVectorStore
@@ -45,8 +45,8 @@ def get_file_store() -> SupabaseFileStore:
 
 @lru_cache
 def get_encoder() -> EmbeddingEncoder:
-    return LocalEncoder(
-        model_name="BAAI/bge-small-en-v1.5",
+    return RemoteEncoder(
+        model_name="baai/bge-small-en-v1.5",
         dimensionality=384,
     )
 
