@@ -12,7 +12,6 @@ RUN pip install --no-cache-dir .
 COPY apps/ ./apps/
 COPY engine/ ./engine/
 COPY storage/ ./storage/
-COPY scripts/ ./scripts/
 
 EXPOSE 8000
 

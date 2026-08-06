@@ -7,7 +7,7 @@ from supabase import Client, create_client
 from engine.graph.knowledge_graph import KnowledgeGraph
 from engine.extraction.extractor import EntityExtractor
 from engine.ingestion.pipeline import IngestionPipeline
-from engine.embeddings.encoder import LocalEncoder, EmbeddingEncoder, RemoteEncoder
+from engine.embeddings.encoder import EmbeddingEncoder, RemoteEncoder
 from engine.agent.reasoner_async import AsyncGraphReasoner
 from storage.supabase.graph_store import SupabaseGraphStore
 from storage.supabase.vector_store import SupabaseVectorStore
