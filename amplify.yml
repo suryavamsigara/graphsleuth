@@ -4,10 +4,10 @@ frontend:
     preBuild:
       commands:
         - cd apps/web
-        - npm install --legacy-peer-deps
+        - npm ci
     build:
       commands:
-        - npm run build
+        - cd apps/web && npm run build
   artifacts:
     baseDirectory: apps/web/dist
     files:
