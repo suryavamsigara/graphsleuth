@@ -77,7 +77,7 @@ class AsyncGraphReasoner:
         self.max_trace_chunks = max_trace_chunks
         self.max_depth = max_depth
         self.top_k = top_k
-        self.client = get_async_openai_client() if use_openai else get_async_ollama_client()
+        self.client = get_async_openai_client() # if use_openai else get_async_ollama_client()
 
 
     # ------------------------------------------------------------------
@@ -231,10 +231,8 @@ class AsyncGraphReasoner:
         {question}
 
         === INSTRUCTIONS ===
-        1. Answer using ONLY the evidence above.
-        2. Cite specific entities and source chunks.
-        3. If insufficient, say "Insufficient evidence" and explain why.
-        4. Be concise (3-5 sentences) unless the question is complex.
+        1. Answer the question
+        2. If insufficient, say "Insufficient evidence" and explain why.
 
         Answer:
         """
@@ -250,7 +248,7 @@ class AsyncGraphReasoner:
             model=self.model_name,
             messages=messages,
             temperature=0.2,
-            max_tokens=2048,
+            max_tokens=4096,
             stream=True,
             stream_options={"include_usage": True},
         )
@@ -334,7 +332,7 @@ class AsyncGraphReasoner:
             model=self.model_name,
             messages=messages,
             temperature=0.3,
-            max_tokens=1024,
+            max_tokens=4096,
             stream=True,
             stream_options={"include_usage": True},
         )
