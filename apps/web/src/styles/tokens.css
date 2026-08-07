@@ -20,7 +20,7 @@
   --thread-glow: rgba(242, 163, 62, 0.55);
   --pin: #ef5b4e;               /* entry-node pin, case-file red */
   --pin-glow: rgba(239, 91, 78, 0.5);
-  --verdict: #5fd0a7;           /* confidence stamp green */
+  --verdict: #8fb8a9;           /* confidence stamp green */
   --wire: #6c8ef5;              /* structural / secondary accent, cold wire-blue */
 
   /* ---- entity palette (kept from the domain model, tuned) ---- */

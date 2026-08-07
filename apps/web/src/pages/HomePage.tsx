@@ -7,7 +7,7 @@ import {
   Lock,
   Search,
   ArrowDown,
-  Sparkles,
+  Workflow,
   ChevronRight,
 } from "lucide-react";
 import { motion } from "framer-motion";
@@ -118,7 +118,7 @@ export default function HomePage({ onOpenProject }: HomePageProps) {
       <header className="h-16 flex items-center justify-between px-6 border-b border-[var(--hairline)] bg-[var(--void)]/80 backdrop-blur-md sticky top-0 z-40">
         <div className="flex items-center gap-3">
           <div className="w-7 h-7 rounded-[4px] bg-[var(--thread)] flex items-center justify-center rotate-[-3deg]">
-            <Sparkles className="w-3.5 h-3.5 text-[var(--void)]" />
+            <Workflow className="w-3.5 h-3.5 text-[var(--void)]" />
           </div>
           <span className="mono text-[14px] font-semibold tracking-tight">
             GraphSleuth
@@ -144,7 +144,7 @@ export default function HomePage({ onOpenProject }: HomePageProps) {
             transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
           >
             <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[var(--thread)]/10 border border-[var(--thread)]/20 text-[var(--thread)] text-[11px] font-medium mb-6">
-              <Sparkles className="w-3 h-3" />
+              <Workflow className="w-3 h-3" />
               Knowledge Graph RAG
             </span>
 

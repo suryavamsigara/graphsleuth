@@ -212,7 +212,7 @@ export default function ChatPanel({ projectId, onTrace }: ChatPanelProps) {
           ) : (
             <div key={m.id} className="space-y-2">
               {m.steps.length > 0 && (
-                <ReasoningTrail steps={m.steps} confidence={m.confidence} latencyMs={m.latencyMs} live={m.streaming} />
+                <ReasoningTrail steps={m.steps} latencyMs={m.latencyMs} live={m.streaming} />
               )}
               {m.error ? (
                 <p className="text-[13px] text-[var(--pin)]">{m.error}</p>

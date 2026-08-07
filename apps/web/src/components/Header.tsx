@@ -1,4 +1,4 @@
-import { Plus } from "lucide-react";
+import { Plus, Workflow } from "lucide-react";
 import WorkspaceSwitcher from "./WorkspaceSwitcher";
 import MetricsPill from "./MetricsPill";
 import UserMenu from "./UserMenu";
@@ -29,8 +29,8 @@ export default function Header({
     <header className="h-14 shrink-0 flex items-center justify-between gap-3 px-4 border-b border-[var(--hairline)] bg-[var(--void)]">
       <div className="flex items-center gap-3 min-w-0">
         <button onClick={onGoHome} className="flex items-center gap-2 pr-3 mr-1 border-r border-[var(--hairline)] shrink-0">
-          <div className="w-6 h-6 rounded-[3px] bg-[var(--thread)] flex items-center justify-center rotate-[-3deg]">
-            <span className="mono text-[11px] font-bold text-[var(--void)]">GS</span>
+          <div className="w-7 h-7 rounded-[4px] bg-[var(--thread)] flex items-center justify-center rotate-[-3deg]">
+            <Workflow className="w-3.5 h-3.5 text-[var(--void)]" />
           </div>
           <span className="mono text-[13px] font-semibold tracking-tight text-[var(--ink)]">GraphSleuth</span>
         </button>

@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { ChevronRight, Search, Route, FileSearch, Sparkles, Save, AlertTriangle } from "lucide-react";
-import { cn, formatMs, formatPct } from "../lib/utils";
+import { ChevronRight, Search, Route, FileSearch, Sparkles, Save } from "lucide-react";
+import { cn, formatMs } from "../lib/utils";
 import type { ReasoningStep } from "../lib/api";
 
 const STEP_ICON: Record<string, any> = {
@@ -43,7 +43,7 @@ interface ReasoningTrailProps {
   live?: boolean; // still streaming
 }
 
-export default function ReasoningTrail({ steps, confidence, latencyMs, live }: ReasoningTrailProps) {
+export default function ReasoningTrail({ steps, latencyMs, live }: ReasoningTrailProps) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -62,15 +62,6 @@ export default function ReasoningTrail({ steps, confidence, latencyMs, live }: R
           {live && <span className="mono text-[10px] text-[var(--thread)] animate-pulse">tracing…</span>}
           {typeof latencyMs === "number" && (
             <span className="mono text-[10px] text-[var(--ink-faint)]">{formatMs(latencyMs)}</span>
-          )}
-          {typeof confidence === "number" && (
-            <span
-              className="stamp"
-              style={{ color: confidence >= 0.6 ? "var(--verdict)" : confidence >= 0.35 ? "var(--thread)" : "var(--pin)" }}
-            >
-              {confidence < 0.35 && <AlertTriangle className="w-3 h-3" />}
-              {formatPct(confidence)} confident
-            </span>
           )}
         </div>
       </button>

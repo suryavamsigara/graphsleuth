@@ -81,13 +81,13 @@ export default function NodePanel({ projectId, node, onClose, onNavigateNode }: 
           animate={{ x: 0, opacity: 1 }}
           exit={{ x: 340, opacity: 0 }}
           transition={{ type: "spring", damping: 30, stiffness: 300 }}
-          className="absolute top-4 right-4 bottom-4 w-[22rem] z-20 rounded-lg border border-[var(--hairline)] bg-[var(--panel)] flex flex-col overflow-hidden shadow-2xl"
+          className="absolute top-4 right-4 bottom-4 w-[22rem] z-40 rounded-lg border border-[var(--hairline)] bg-[var(--panel)] flex flex-col overflow-hidden shadow-2xl"
         >
           {/* manila folder tab */}
           <div className="flex items-center justify-between px-4 pt-3 pb-2.5 border-b border-[var(--hairline)]">
             <div className="flex items-center gap-2">
               <Network className="w-3.5 h-3.5 text-[var(--thread)]" />
-              <span className="eyebrow">Case file · Entity</span>
+              <span className="eyebrow">Node · Entity</span>
             </div>
             <button onClick={onClose} className="p-1 rounded-md text-[var(--ink-faint)] hover:text-[var(--ink)] hover:bg-[var(--panel-raised)] transition-colors">
               <X className="w-4 h-4" />

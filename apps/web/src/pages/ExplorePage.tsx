@@ -166,8 +166,8 @@ export default function ExplorePage({ projectId, onGoHome, onSelectProject }: Ex
           left={<ChatPanel key={projectId} projectId={projectId} onTrace={handleTrace} />}
           right={
             <div className="relative w-full h-full p-3">
-              <div className="absolute top-6 left-6 right-6 z-30">
-                <div className="relative max-w-sm">
+              <div className="absolute top-6 left-6 right-6 z-30 max-w-sm w-full pointer-events-none">
+                <div className="relative w-full pointer-events-auto">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--ink-faint)]" />
                   <input
                     value={searchTerm}
@@ -210,7 +210,10 @@ export default function ExplorePage({ projectId, onGoHome, onSelectProject }: Ex
               <NodePanel
                 projectId={projectId}
                 node={selectedNode}
-                onClose={() => setSelectedNode(null)}
+                onClose={() => {
+                  setSelectedNode(null);
+                  setSelectedNodeId(null);
+                }}
                 onNavigateNode={loadNodeNeighborhood}
               />
             </div>
