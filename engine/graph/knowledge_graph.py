@@ -18,7 +18,7 @@ from engine.models.document import Chunk, Document, ReasoningTrace
 from engine.graph.traversal import TraversalEngine
 
 # ---------------------------------------------------------------------------
-# Knowledge Graph (in memory cache + SQLite persistence)
+# Knowledge Graph (in memory cache + db persistence)
 # ---------------------------------------------------------------------------
 
 class KnowledgeGraph:
