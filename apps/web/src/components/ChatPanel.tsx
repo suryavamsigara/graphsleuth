@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowUp, Loader2 } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { api, ReasoningStep } from "../lib/api";
 import { useAuth } from "../lib/authContext";
 import ReasoningTrail from "./ReasoningTrail";
@@ -19,7 +21,7 @@ interface ChatMessage {
 
 interface ChatPanelProps {
   projectId: string;
-  onTrace: (traceId: string) => void; // tells ExplorePage to render the resulting trace graph
+  onTrace: (traceId: string) => void;
 }
 
 const DEPTH_OPTIONS = [
@@ -46,9 +48,6 @@ export default function ChatPanel({ projectId, onTrace }: ChatPanelProps) {
   const [busy, setBusy] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Load this user's persisted transcript for this project. Anonymous
-  // visitors never get history back (nothing was saved for them either —
-  // see query.py), so this only fires when signed in.
   useEffect(() => {
     let cancelled = false;
     setHistoryLoaded(false);
@@ -75,9 +74,7 @@ export default function ChatPanel({ projectId, onTrace }: ChatPanelProps) {
           }))
         );
       })
-      .catch(() => {
-        // no history yet, or the request failed — either way, start fresh
-      })
+      .catch(() => {})
       .finally(() => !cancelled && setHistoryLoaded(true));
 
     return () => {
@@ -217,10 +214,36 @@ export default function ChatPanel({ projectId, onTrace }: ChatPanelProps) {
               {m.error ? (
                 <p className="text-[13px] text-[var(--pin)]">{m.error}</p>
               ) : (
-                <p className="text-[13px] text-[var(--ink)] leading-relaxed whitespace-pre-wrap">
-                  {m.text}
-                  {m.streaming && <span className="inline-block w-1.5 h-3.5 bg-[var(--thread)] ml-0.5 align-middle animate-pulse" />}
-                </p>
+                <div className="text-[13px] text-[var(--ink)] leading-relaxed space-y-2">
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                      p: ({ children }) => <p className="mb-2 last:mb-0 leading-relaxed">{children}</p>,
+                      strong: ({ children }) => <strong className="font-semibold text-[var(--ink)]">{children}</strong>,
+                      ul: ({ children }) => <ul className="list-disc pl-4 space-y-1 my-2">{children}</ul>,
+                      ol: ({ children }) => <ol className="list-decimal pl-4 space-y-1 my-2">{children}</ol>,
+                      li: ({ children }) => <li className="text-[13px]">{children}</li>,
+                      h1: ({ children }) => <h1 className="text-base font-semibold text-[var(--ink)] mt-3 mb-1">{children}</h1>,
+                      h2: ({ children }) => <h2 className="text-[14px] font-semibold text-[var(--ink)] mt-2.5 mb-1">{children}</h2>,
+                      h3: ({ children }) => <h3 className="text-[13px] font-semibold text-[var(--ink)] mt-2 mb-1">{children}</h3>,
+                      code: ({ children }) => (
+                        <code className="mono text-[11px] px-1 py-0.5 rounded bg-[var(--panel-raised)] border border-[var(--hairline)] text-[var(--thread)]">
+                          {children}
+                        </code>
+                      ),
+                      blockquote: ({ children }) => (
+                        <blockquote className="border-l-2 border-[var(--thread)] pl-3 text-[var(--ink-dim)] italic my-2">
+                          {children}
+                        </blockquote>
+                      ),
+                    }}
+                  >
+                    {m.text}
+                  </ReactMarkdown>
+                  {m.streaming && (
+                    <span className="inline-block w-1.5 h-3.5 bg-[var(--thread)] ml-0.5 align-middle animate-pulse" />
+                  )}
+                </div>
               )}
             </div>
           )

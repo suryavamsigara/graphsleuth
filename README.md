@@ -2,6 +2,8 @@
 
 Turn documents into living knowledge graphs - extract entities, map relationships, and reason across your documents with full traceability. Every answer streams back with the exact entities, edges, and source chunks that produced it.
 
+![alt text](assets/screenshot.png)
+
 ## What it does
 
 Upload documents into a project, and GraphSleuth:
