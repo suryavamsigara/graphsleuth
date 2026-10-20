@@ -23,7 +23,7 @@ class Node:
 
     def to_dict(self) -> dict:
         return {
-            "id": self.id,
+            "id": self.id,  
             "node_type": self.node_type,
             "aliases": self.aliases,
             "description": self.description,
